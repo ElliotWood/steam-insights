@@ -1,6 +1,6 @@
 # Steam Insights
 
-A comprehensive analytics dashboard for Steam games, providing insights into player statistics, pricing history, genre analysis, and more.
+A comprehensive analytics dashboard for Steam games, providing insights into player statistics, pricing history, genre analysis, and market overlap analysis.
 
 ## 🌟 Features
 
@@ -8,8 +8,9 @@ A comprehensive analytics dashboard for Steam games, providing insights into pla
 - **Player Statistics**: Track current and historical player counts
 - **Pricing History**: Monitor game prices and discounts over time
 - **Genre Analysis**: Analyze games by genre and category
+- **Market Analysis**: Game ownership overlap and addressable market analysis
 - **REST API**: FastAPI-based backend for data access
-- **Interactive Dashboard**: Streamlit-based web interface for data visualization
+- **Interactive Dashboard**: Streamlit-based web interface (5 pages)
 - **Data Import**: ETL pipeline for importing game data from Steam API
 - **Web Scraping**: Supplementary data collection from Steam store pages
 
