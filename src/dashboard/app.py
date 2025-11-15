@@ -981,75 +981,392 @@ def show_market_analysis():
 
 
 def show_data_management():
-    """Show data management page for importing games."""
-    st.header("Data Management")
+    """Show enhanced data management page."""
+    st.header("📥 Data Management & Export")
     
-    st.write("Import games from Steam to populate the database.")
+    # Create tabs for different management features
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Import Single", "📦 Bulk Import", "📤 Export Data", "📈 Database Stats"
+    ])
     
-    # Import single game
-    st.subheader("Import Single Game")
+    with tab1:
+        st.markdown("### Import Single Game")
+        st.write("Import individual games by Steam App ID.")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            app_id = st.number_input(
+                "Enter Steam App ID:",
+                min_value=1,
+                step=1,
+                help="You can find the App ID in the Steam store URL (e.g., 730 for CS2)",
+                key="single_import_id"
+            )
+        
+        with col2:
+            import_stats = st.checkbox("Import player stats", value=True, key="import_stats_checkbox")
+        
+        if st.button("🚀 Import Game", key="import_single_btn"):
+            with st.spinner(f"Importing game {app_id}..."):
+                db = get_session()
+                importer = GameDataImporter(db)
+                
+                try:
+                    game = importer.import_game(app_id)
+                    if game:
+                        st.success(f"✅ Successfully imported: **{game.name}**")
+                        
+                        # Display game info
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Developer", game.developer or "Unknown")
+                        with col2:
+                            st.metric("Genres", len(game.genres))
+                        with col3:
+                            platforms = []
+                            if game.windows: platforms.append("🪟")
+                            if game.mac: platforms.append("🍎")
+                            if game.linux: platforms.append("🐧")
+                            st.metric("Platforms", " ".join(platforms))
+                        
+                        # Import player stats if requested
+                        if import_stats:
+                            with st.spinner("Fetching player statistics..."):
+                                stats = importer.update_player_stats(app_id)
+                                if stats:
+                                    st.info(f"📊 Current players: **{stats.current_players:,}**")
+                                else:
+                                    st.warning("Could not fetch player statistics")
+                    else:
+                        st.error("❌ Failed to import game. Check the App ID and try again.")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+                finally:
+                    db.close()
+        
+        st.markdown("---")
+        
+        # Quick import popular games
+        st.markdown("### 🎮 Quick Import - Popular Games")
+        
+        popular_games = [
+            ("Counter-Strike 2", 730),
+            ("Dota 2", 570),
+            ("Team Fortress 2", 440),
+            ("Rust", 252490),
+            ("Apex Legends", 1172470),
+            ("GTA V", 271590),
+            ("PUBG", 578080),
+            ("Stardew Valley", 413150),
+        ]
+        
+        cols = st.columns(4)
+        for idx, (name, appid) in enumerate(popular_games):
+            with cols[idx % 4]:
+                if st.button(name, key=f"popular_{appid}", use_container_width=True):
+                    with st.spinner(f"Importing {name}..."):
+                        db = get_session()
+                        importer = GameDataImporter(db)
+                        
+                        try:
+                            game = importer.import_game(appid)
+                            if game:
+                                st.success(f"✅ {game.name}")
+                                # Update stats in background
+                                importer.update_player_stats(appid)
+                            else:
+                                st.error("❌ Failed")
+                        except Exception as e:
+                            st.error(f"❌ Error")
+                        finally:
+                            db.close()
+                            st.rerun()
     
-    app_id = st.number_input(
-        "Enter Steam App ID:",
-        min_value=1,
-        step=1,
-        help="You can find the App ID in the Steam store URL"
-    )
-    
-    if st.button("Import Game"):
-        with st.spinner(f"Importing game {app_id}..."):
-            db = get_session()
-            importer = GameDataImporter(db)
+    with tab2:
+        st.markdown("### 📦 Bulk Import Operations")
+        st.write("Import multiple games at once.")
+        
+        # Import method selection
+        import_method = st.radio(
+            "Select import method:",
+            ["Top 50 Popular Games", "Custom List", "By Genre"],
+            horizontal=True
+        )
+        
+        if import_method == "Top 50 Popular Games":
+            st.info("💡 This will import the top 50 most popular Steam games.")
             
-            try:
-                game = importer.import_game(app_id)
-                if game:
-                    st.success(f"✅ Successfully imported: {game.name}")
+            col1, col2 = st.columns(2)
+            with col1:
+                num_games = st.slider("Number of games:", 10, 50, 25, 5)
+            with col2:
+                import_delay = st.slider("Delay (seconds):", 0.5, 5.0, 1.0, 0.5)
+            
+            if st.button("🚀 Start Bulk Import", key="bulk_import_top50"):
+                from src.utils.bulk_import import BulkImporter
+                
+                db = get_session()
+                bulk_importer = BulkImporter(db)
+                
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                try:
+                    status_text.text("Starting bulk import...")
+                    results = bulk_importer.import_top_games(limit=num_games, delay=import_delay)
+                    progress_bar.progress(100)
                     
-                    # Also try to import player stats
-                    stats = importer.update_player_stats(app_id)
-                    if stats:
-                        st.info(f"Current players: {stats.current_players}")
-                else:
-                    st.error("Failed to import game. Check the App ID and try again.")
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
-            finally:
-                db.close()
-    
-    st.markdown("---")
-    
-    # Popular game suggestions
-    st.subheader("Popular Games to Import")
-    st.write("Try importing these popular games:")
-    
-    popular_games = [
-        ("Counter-Strike 2", 730),
-        ("Dota 2", 570),
-        ("Team Fortress 2", 440),
-        ("Rust", 252490),
-        ("Apex Legends", 1172470),
-        ("Grand Theft Auto V", 271590),
-    ]
-    
-    cols = st.columns(3)
-    for idx, (name, appid) in enumerate(popular_games):
-        with cols[idx % 3]:
-            if st.button(f"Import {name}", key=f"popular_{appid}"):
-                with st.spinner(f"Importing {name}..."):
-                    db = get_session()
-                    importer = GameDataImporter(db)
+                    # Show results
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("✅ Success", len(results['success']))
+                    with col2:
+                        st.metric("⏭️ Skipped", len(results['skipped']))
+                    with col3:
+                        st.metric("❌ Failed", len(results['failed']))
                     
+                    # Show report
+                    with st.expander("📄 View Detailed Report"):
+                        st.text(bulk_importer.get_import_report())
+                    
+                    st.success("Bulk import completed!")
+                    
+                except Exception as e:
+                    st.error(f"Error during bulk import: {str(e)}")
+                finally:
+                    db.close()
+        
+        elif import_method == "Custom List":
+            st.info("💡 Enter a comma-separated list of Steam App IDs.")
+            
+            app_ids_input = st.text_area(
+                "App IDs (comma-separated):",
+                placeholder="730, 570, 440, 252490",
+                help="Example: 730, 570, 440"
+            )
+            
+            import_delay = st.slider("Delay (seconds):", 0.5, 5.0, 1.0, 0.5, key="custom_delay")
+            
+            if st.button("🚀 Import Custom List", key="bulk_import_custom"):
+                if app_ids_input:
                     try:
-                        game = importer.import_game(appid)
-                        if game:
-                            st.success(f"✅ Imported: {game.name}")
+                        # Parse app IDs
+                        app_ids = [int(x.strip()) for x in app_ids_input.split(',') if x.strip()]
+                        
+                        if not app_ids:
+                            st.error("No valid App IDs found")
                         else:
-                            st.error("Failed to import game")
-                    except Exception as e:
-                        st.error(f"Error: {str(e)}")
-                    finally:
-                        db.close()
+                            from src.utils.bulk_import import BulkImporter
+                            
+                            db = get_session()
+                            bulk_importer = BulkImporter(db)
+                            
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+                            
+                            try:
+                                status_text.text(f"Importing {len(app_ids)} games...")
+                                results = bulk_importer.import_games_batch(
+                                    app_ids,
+                                    delay=import_delay,
+                                    update_stats=True
+                                )
+                                progress_bar.progress(100)
+                                
+                                # Show results
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("✅ Success", len(results['success']))
+                                with col2:
+                                    st.metric("⏭️ Skipped", len(results['skipped']))
+                                with col3:
+                                    st.metric("❌ Failed", len(results['failed']))
+                                
+                                st.success("Import completed!")
+                                
+                            finally:
+                                db.close()
+                    
+                    except ValueError:
+                        st.error("Invalid input. Please enter comma-separated numbers.")
+                else:
+                    st.warning("Please enter some App IDs")
+    
+    with tab3:
+        st.markdown("### 📤 Export Data")
+        st.write("Export your data in various formats.")
+        
+        export_type = st.selectbox(
+            "Select data to export:",
+            ["Games Catalog", "Player Statistics", "Genre Analysis", "Market Report"]
+        )
+        
+        db = get_session()
+        
+        try:
+            from src.utils.data_export import DataExporter
+            exporter = DataExporter(db)
+            
+            if export_type == "Games Catalog":
+                st.markdown("#### 🎮 Export Games Catalog")
+                
+                # Filters
+                with st.expander("🔍 Filters (Optional)"):
+                    filter_genre = st.selectbox("Genre:", ["All"] + [
+                        g[0] for g in db.query(Genre.name).distinct().all()
+                    ])
+                    filter_developer = st.text_input("Developer contains:", "")
+                
+                export_format = st.radio("Format:", ["CSV", "JSON"], horizontal=True)
+                
+                if st.button("📥 Export Games", key="export_games"):
+                    filters = {}
+                    if filter_genre != "All":
+                        filters['genre'] = filter_genre
+                    if filter_developer:
+                        filters['developer'] = filter_developer
+                    
+                    with st.spinner("Preparing export..."):
+                        df = exporter.export_games_to_csv(filters)
+                        
+                        if not df.empty:
+                            if export_format == "CSV":
+                                csv = df.to_csv(index=False)
+                                st.download_button(
+                                    label="⬇️ Download CSV",
+                                    data=csv,
+                                    file_name=f"steam_games_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                    mime="text/csv"
+                                )
+                            else:
+                                json_str = df.to_json(orient='records', indent=2)
+                                st.download_button(
+                                    label="⬇️ Download JSON",
+                                    data=json_str,
+                                    file_name=f"steam_games_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                    mime="application/json"
+                                )
+                            
+                            st.success(f"✅ Prepared {len(df)} games for export")
+                            st.dataframe(df.head(10), use_container_width=True)
+                        else:
+                            st.warning("No games found matching filters")
+            
+            elif export_type == "Player Statistics":
+                st.markdown("#### 📊 Export Player Statistics")
+                
+                # Date range
+                col1, col2 = st.columns(2)
+                with col1:
+                    start_date = st.date_input("Start Date:", value=None)
+                with col2:
+                    end_date = st.date_input("End Date:", value=None)
+                
+                if st.button("📥 Export Stats", key="export_stats"):
+                    with st.spinner("Preparing export..."):
+                        df = exporter.export_player_stats_to_csv(
+                            start_date=datetime.combine(start_date, datetime.min.time()) if start_date else None,
+                            end_date=datetime.combine(end_date, datetime.max.time()) if end_date else None
+                        )
+                        
+                        if not df.empty:
+                            csv = df.to_csv(index=False)
+                            st.download_button(
+                                label="⬇️ Download CSV",
+                                data=csv,
+                                file_name=f"player_stats_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv"
+                            )
+                            st.success(f"✅ Prepared {len(df)} stat records for export")
+                            st.dataframe(df.head(10), use_container_width=True)
+                        else:
+                            st.warning("No stats found for selected period")
+            
+            elif export_type == "Genre Analysis":
+                st.markdown("#### 🎯 Export Genre Analysis")
+                
+                if st.button("📥 Export Genres", key="export_genres"):
+                    with st.spinner("Preparing export..."):
+                        json_data = exporter.export_genres_to_json()
+                        st.download_button(
+                            label="⬇️ Download JSON",
+                            data=json_data,
+                            file_name=f"genres_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                            mime="application/json"
+                        )
+                        st.success("✅ Genre data ready for export")
+                        st.json(json_data)
+        
+        finally:
+            db.close()
+    
+    with tab4:
+        st.markdown("### 📈 Database Statistics")
+        
+        db = get_session()
+        
+        try:
+            from src.utils.data_export import DataExporter
+            exporter = DataExporter(db)
+            stats = exporter.get_summary_statistics()
+            
+            # Display stats
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("🎮 Total Games", f"{stats['total_games']:,}")
+            with col2:
+                st.metric("🎯 Genres", f"{stats['total_genres']:,}")
+            with col3:
+                st.metric("📊 Player Stats", f"{stats['total_player_stats']:,}")
+            with col4:
+                st.metric("📈 Games w/ Stats", f"{stats['games_with_stats']:,}")
+            
+            st.markdown("---")
+            
+            # Date range info
+            if stats['date_range']['earliest'] and stats['date_range']['latest']:
+                st.markdown("#### 📅 Data Coverage")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.info(f"**Earliest Data:** {stats['date_range']['earliest'][0].strftime('%Y-%m-%d %H:%M')}")
+                with col2:
+                    st.info(f"**Latest Data:** {stats['date_range']['latest'][0].strftime('%Y-%m-%d %H:%M')}")
+            
+            # Database health
+            st.markdown("#### 🏥 Database Health")
+            
+            health_metrics = []
+            
+            # Check data completeness
+            if stats['total_games'] > 0:
+                completeness = (stats['games_with_stats'] / stats['total_games']) * 100
+                health_metrics.append(("Data Completeness", f"{completeness:.1f}%", "success" if completeness > 50 else "warning"))
+            
+            # Check recent activity
+            if stats['date_range']['latest']:
+                hours_since_update = (datetime.utcnow() - stats['date_range']['latest'][0]).total_seconds() / 3600
+                if hours_since_update < 24:
+                    health_metrics.append(("Recent Activity", "Active", "success"))
+                else:
+                    health_metrics.append(("Recent Activity", f"{int(hours_since_update)}h ago", "warning"))
+            
+            for metric_name, value, status in health_metrics:
+                if status == "success":
+                    st.success(f"✅ **{metric_name}:** {value}")
+                else:
+                    st.warning(f"⚠️ **{metric_name}:** {value}")
+            
+            # Cleanup actions
+            st.markdown("#### 🧹 Maintenance")
+            if st.button("🔄 Refresh All Player Stats"):
+                st.info("This feature updates stats for all games (can take a while)")
+                # Placeholder for future implementation
+                st.warning("Feature coming soon!")
+            
+        finally:
+            db.close()
 
 
 if __name__ == "__main__":
