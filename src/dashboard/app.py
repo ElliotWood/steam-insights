@@ -22,6 +22,112 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Custom CSS for professional styling
+st.markdown("""
+<style>
+    /* Main styling */
+    .main {
+        background-color: #0e1117;
+    }
+    
+    /* Metric cards */
+    [data-testid="stMetricValue"] {
+        font-size: 28px;
+        font-weight: 600;
+    }
+    
+    /* Headers */
+    h1 {
+        color: #00d4ff;
+        font-weight: 700;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #00d4ff;
+    }
+    
+    h2 {
+        color: #00d4ff;
+        font-weight: 600;
+        margin-top: 20px;
+    }
+    
+    h3 {
+        color: #4da6ff;
+    }
+    
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #161b22;
+    }
+    
+    /* Buttons */
+    .stButton button {
+        background-color: #00d4ff;
+        color: #0e1117;
+        font-weight: 600;
+        border-radius: 5px;
+        border: none;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton button:hover {
+        background-color: #00a8cc;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 212, 255, 0.3);
+    }
+    
+    /* Cards/Containers */
+    .css-1r6slb0 {
+        background-color: #1a1f2e;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Info boxes */
+    .stAlert {
+        background-color: #1a2332;
+        border-left: 4px solid #00d4ff;
+        border-radius: 5px;
+    }
+    
+    /* Dataframes */
+    .dataframe {
+        background-color: #1a1f2e;
+        color: #ffffff;
+    }
+    
+    /* Expander */
+    .streamlit-expanderHeader {
+        background-color: #1a2332;
+        border-radius: 5px;
+        font-weight: 600;
+    }
+    
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background-color: #1a2332;
+        border-radius: 5px 5px 0 0;
+        padding: 10px 20px;
+        font-weight: 600;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #00d4ff;
+        color: #0e1117;
+    }
+    
+    /* Plotly charts */
+    .js-plotly-plot {
+        border-radius: 10px;
+        background-color: #1a1f2e;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Initialize database
 init_db()
 
@@ -67,26 +173,27 @@ def main():
 
 def show_overview():
     """Show overview page with key statistics."""
-    st.header("Overview")
+    st.header("📊 Dashboard Overview")
     
     db = get_session()
     
-    # Key metrics
+    # Key metrics row with enhanced styling
+    st.markdown("### 🎯 Key Performance Indicators")
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         total_games = db.query(Game).count()
-        st.metric("Total Games", f"{total_games:,}")
+        st.metric("Total Games", f"{total_games:,}", delta=None, help="Total games in database")
     
     with col2:
         total_genres = db.query(Genre).count()
-        st.metric("Genres", f"{total_genres:,}")
+        st.metric("Genres", f"{total_genres:,}", help="Unique genres tracked")
     
     with col3:
         recent_stats = db.query(PlayerStats).filter(
             PlayerStats.timestamp >= datetime.utcnow() - timedelta(hours=24)
         ).count()
-        st.metric("Recent Updates (24h)", f"{recent_stats:,}")
+        st.metric("Recent Updates (24h)", f"{recent_stats:,}", help="Stats updates in last 24h")
     
     with col4:
         avg_players = db.query(PlayerStats).filter(
@@ -94,48 +201,127 @@ def show_overview():
         ).with_entities(
             db.func.avg(PlayerStats.current_players)
         ).scalar()
-        st.metric("Avg Current Players", f"{int(avg_players or 0):,}")
+        st.metric("Avg Current Players", f"{int(avg_players or 0):,}", help="Average players across all games")
     
     st.markdown("---")
     
-    # Top genres
-    st.subheader("Top Genres by Game Count")
+    # Tabbed interface for different analytics views
+    tab1, tab2, tab3 = st.tabs(["📈 Genre Distribution", "🎮 Recent Activity", "🔥 Top Performing"])
     
-    genre_counts = db.query(
-        Genre.name,
-        db.func.count(Game.id).label('count')
-    ).join(Genre.games).group_by(Genre.name).order_by(
-        db.func.count(Game.id).desc()
-    ).limit(10).all()
-    
-    if genre_counts:
-        df_genres = pd.DataFrame(genre_counts, columns=['Genre', 'Game Count'])
-        fig = px.bar(df_genres, x='Genre', y='Game Count', color='Game Count')
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No genre data available yet. Import some games first!")
-    
-    # Recently added games
-    st.subheader("Recently Added Games")
-    
-    recent_games = db.query(Game).order_by(
-        Game.created_at.desc()
-    ).limit(10).all()
-    
-    if recent_games:
-        games_data = []
-        for game in recent_games:
-            games_data.append({
-                'Name': game.name,
-                'Developer': game.developer or 'Unknown',
-                'Release Date': game.release_date.strftime('%Y-%m-%d') if game.release_date else 'N/A',
-                'Added': game.created_at.strftime('%Y-%m-%d %H:%M')
-            })
+    with tab1:
+        st.markdown("#### Genre Distribution Analysis")
         
-        df_recent = pd.DataFrame(games_data)
-        st.dataframe(df_recent, use_container_width=True)
-    else:
-        st.info("No games in database yet. Import some games to get started!")
+        genre_counts = db.query(
+            Genre.name,
+            db.func.count(Game.id).label('count')
+        ).join(Genre.games).group_by(Genre.name).order_by(
+            db.func.count(Game.id).desc()
+        ).limit(10).all()
+        
+        if genre_counts:
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                # Bar chart
+                df_genres = pd.DataFrame(genre_counts, columns=['Genre', 'Game Count'])
+                fig = px.bar(
+                    df_genres, 
+                    x='Genre', 
+                    y='Game Count',
+                    color='Game Count',
+                    color_continuous_scale='Blues',
+                    title="Top 10 Genres by Game Count"
+                )
+                fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#ffffff',
+                    showlegend=False,
+                    height=400
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                # Pie chart
+                fig_pie = px.pie(
+                    df_genres,
+                    values='Game Count',
+                    names='Genre',
+                    title="Genre Distribution"
+                )
+                fig_pie.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#ffffff',
+                    height=400
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+        else:
+            st.info("📥 No genre data available yet. Import some games first!")
+    
+    with tab2:
+        st.markdown("#### Recently Added Games")
+        
+        recent_games = db.query(Game).order_by(
+            Game.created_at.desc()
+        ).limit(15).all()
+        
+        if recent_games:
+            games_data = []
+            for game in recent_games:
+                games_data.append({
+                    'Name': game.name,
+                    'Developer': game.developer or 'Unknown',
+                    'Genres': ', '.join([g.name for g in game.genres[:2]]) if game.genres else 'N/A',
+                    'Release Date': game.release_date.strftime('%Y-%m-%d') if game.release_date else 'N/A',
+                    'Added': game.created_at.strftime('%Y-%m-%d %H:%M')
+                })
+            
+            df_recent = pd.DataFrame(games_data)
+            st.dataframe(
+                df_recent,
+                use_container_width=True,
+                height=400,
+                hide_index=True
+            )
+        else:
+            st.info("📥 No games in database yet. Import some games to get started!")
+    
+    with tab3:
+        st.markdown("#### Top Performing Games (by Player Count)")
+        
+        # Get games with recent player stats
+        top_games = db.query(
+            Game.name,
+            Game.developer,
+            db.func.max(PlayerStats.current_players).label('peak_players'),
+            db.func.avg(PlayerStats.current_players).label('avg_players')
+        ).join(PlayerStats).filter(
+            PlayerStats.timestamp >= datetime.utcnow() - timedelta(days=7)
+        ).group_by(Game.name, Game.developer).order_by(
+            db.func.max(PlayerStats.current_players).desc()
+        ).limit(10).all()
+        
+        if top_games:
+            df_top = pd.DataFrame([
+                {
+                    'Rank': idx + 1,
+                    'Game': game.name,
+                    'Developer': game.developer or 'Unknown',
+                    'Peak Players': f"{int(game.peak_players):,}",
+                    'Avg Players': f"{int(game.avg_players):,}"
+                }
+                for idx, game in enumerate(top_games)
+            ])
+            
+            st.dataframe(
+                df_top,
+                use_container_width=True,
+                height=400,
+                hide_index=True
+            )
+        else:
+            st.info("📊 No player statistics available yet. Import games and update player stats!")
     
     db.close()
 
@@ -216,15 +402,27 @@ def show_game_search():
 
 def show_analytics():
     """Show analytics page with charts and insights."""
-    st.header("Analytics")
+    st.header("📈 Advanced Analytics")
     
     db = get_session()
     
-    # Time range selector
-    time_range = st.selectbox(
-        "Select time range:",
-        ["Last 24 Hours", "Last 7 Days", "Last 30 Days", "Last 90 Days"]
-    )
+    # Filters sidebar
+    with st.sidebar:
+        st.markdown("### 🔍 Filters")
+        time_range = st.selectbox(
+            "Time Range:",
+            ["Last 24 Hours", "Last 7 Days", "Last 30 Days", "Last 90 Days"],
+            index=2
+        )
+        
+        # Genre filter
+        all_genres = db.query(Genre.name).order_by(Genre.name).all()
+        genre_names = [g[0] for g in all_genres]
+        selected_genres = st.multiselect(
+            "Filter by Genre:",
+            options=genre_names,
+            help="Leave empty to show all genres"
+        )
     
     days_map = {
         "Last 24 Hours": 1,
@@ -233,41 +431,271 @@ def show_analytics():
         "Last 90 Days": 90
     }
     days = days_map[time_range]
-    
     since = datetime.utcnow() - timedelta(days=days)
     
-    # Most active games
-    st.subheader("Most Active Games")
+    # Create tabs for different analytics views
+    tab1, tab2, tab3 = st.tabs(["🎮 Player Analytics", "💰 Market Insights", "📊 Trend Analysis"])
     
-    active_games = db.query(
-        Game.name,
-        db.func.max(PlayerStats.current_players).label('max_players'),
-        db.func.avg(PlayerStats.current_players).label('avg_players')
-    ).join(PlayerStats).filter(
-        PlayerStats.timestamp >= since
-    ).group_by(Game.name).order_by(
-        db.func.max(PlayerStats.current_players).desc()
-    ).limit(15).all()
-    
-    if active_games:
-        df_active = pd.DataFrame(
-            active_games,
-            columns=['Game', 'Peak Players', 'Avg Players']
-        )
-        df_active['Peak Players'] = df_active['Peak Players'].astype(int)
-        df_active['Avg Players'] = df_active['Avg Players'].astype(int)
+    with tab1:
+        st.markdown(f"#### Top Performing Games ({time_range})")
         
-        fig = px.bar(
-            df_active,
-            x='Game',
-            y=['Peak Players', 'Avg Players'],
-            barmode='group',
-            title=f"Top 15 Games by Player Count ({time_range})"
+        # Query for active games
+        query = db.query(
+            Game.name,
+            db.func.max(PlayerStats.current_players).label('max_players'),
+            db.func.avg(PlayerStats.current_players).label('avg_players'),
+            db.func.count(PlayerStats.id).label('data_points')
+        ).join(PlayerStats).filter(
+            PlayerStats.timestamp >= since
         )
-        fig.update_xaxis(tickangle=-45)
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No player statistics available for the selected time range.")
+        
+        # Apply genre filter if selected
+        if selected_genres:
+            query = query.join(Game.genres).filter(Genre.name.in_(selected_genres))
+        
+        active_games = query.group_by(Game.name).order_by(
+            db.func.max(PlayerStats.current_players).desc()
+        ).limit(15).all()
+        
+        if active_games:
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                # Interactive bar chart
+                df_active = pd.DataFrame(
+                    active_games,
+                    columns=['Game', 'Peak Players', 'Avg Players', 'Data Points']
+                )
+                df_active['Peak Players'] = df_active['Peak Players'].astype(int)
+                df_active['Avg Players'] = df_active['Avg Players'].astype(int)
+                
+                fig = go.Figure()
+                fig.add_trace(go.Bar(
+                    name='Peak Players',
+                    x=df_active['Game'],
+                    y=df_active['Peak Players'],
+                    marker_color='#00d4ff'
+                ))
+                fig.add_trace(go.Bar(
+                    name='Avg Players',
+                    x=df_active['Game'],
+                    y=df_active['Avg Players'],
+                    marker_color='#4da6ff'
+                ))
+                
+                fig.update_layout(
+                    barmode='group',
+                    title=f"Top 15 Games by Player Count",
+                    xaxis_tickangle=-45,
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#ffffff',
+                    height=500,
+                    hovermode='x unified'
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                # Statistics summary
+                st.markdown("##### 📊 Summary Statistics")
+                
+                total_peak = df_active['Peak Players'].sum()
+                avg_peak = df_active['Peak Players'].mean()
+                top_game = df_active.iloc[0]
+                
+                st.metric("Total Peak Players", f"{total_peak:,}")
+                st.metric("Average Peak", f"{int(avg_peak):,}")
+                st.metric("Top Game", f"{top_game['Game'][:20]}...")
+                st.metric("Peak", f"{int(top_game['Peak Players']):,}")
+                
+                # Market share visualization
+                st.markdown("##### Market Share (Top 5)")
+                top_5 = df_active.head(5)
+                fig_pie = px.pie(
+                    top_5,
+                    values='Peak Players',
+                    names='Game',
+                    hole=0.4
+                )
+                fig_pie.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#ffffff',
+                    height=300,
+                    showlegend=False
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+        else:
+            st.info("📊 No player statistics available for the selected filters.")
+    
+    with tab2:
+        st.markdown(f"#### Market Insights & Ownership Data")
+        
+        # Get games with ownership data
+        ownership_query = db.query(
+            Game.name,
+            Game.developer,
+            db.func.max(PlayerStats.estimated_owners).label('owners'),
+            db.func.max(PlayerStats.estimated_revenue).label('revenue')
+        ).join(PlayerStats).filter(
+            PlayerStats.estimated_owners.isnot(None),
+            PlayerStats.timestamp >= since
+        )
+        
+        if selected_genres:
+            ownership_query = ownership_query.join(Game.genres).filter(Genre.name.in_(selected_genres))
+        
+        ownership_data = ownership_query.group_by(
+            Game.name, Game.developer
+        ).order_by(
+            db.func.max(PlayerStats.estimated_owners).desc()
+        ).limit(20).all()
+        
+        if ownership_data:
+            df_ownership = pd.DataFrame([
+                {
+                    'Game': o.name,
+                    'Developer': o.developer or 'Unknown',
+                    'Est. Owners': int(o.owners) if o.owners else 0,
+                    'Est. Revenue': f"${int(o.revenue):,}" if o.revenue else 'N/A'
+                }
+                for o in ownership_data
+            ])
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Ownership distribution
+                fig_owners = px.bar(
+                    df_ownership.head(10),
+                    x='Game',
+                    y='Est. Owners',
+                    color='Est. Owners',
+                    color_continuous_scale='Viridis',
+                    title="Top 10 Games by Ownership"
+                )
+                fig_owners.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#ffffff',
+                    xaxis_tickangle=-45,
+                    height=400
+                )
+                st.plotly_chart(fig_owners, use_container_width=True)
+            
+            with col2:
+                # Treemap visualization
+                fig_tree = px.treemap(
+                    df_ownership.head(15),
+                    path=['Developer', 'Game'],
+                    values='Est. Owners',
+                    title="Ownership by Developer"
+                )
+                fig_tree.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font_color='#ffffff',
+                    height=400
+                )
+                st.plotly_chart(fig_tree, use_container_width=True)
+            
+            # Data table
+            st.markdown("##### 📋 Detailed Ownership Data")
+            st.dataframe(df_ownership, use_container_width=True, height=300, hide_index=True)
+        else:
+            st.info("💡 No ownership data available. Import games with estimated_owners to see market insights.")
+    
+    with tab3:
+        st.markdown(f"#### Trend Analysis")
+        
+        # Get time series data for selected games
+        st.markdown("##### Select games to visualize trends:")
+        
+        available_games = db.query(Game.name, Game.id).join(PlayerStats).group_by(
+            Game.name, Game.id
+        ).limit(50).all()
+        
+        if available_games:
+            game_dict = {g.name: g.id for g in available_games}
+            selected_trend_games = st.multiselect(
+                "Choose games:",
+                options=list(game_dict.keys()),
+                default=list(game_dict.keys())[:3] if len(game_dict) >= 3 else list(game_dict.keys())
+            )
+            
+            if selected_trend_games:
+                # Fetch time series data
+                selected_ids = [game_dict[name] for name in selected_trend_games]
+                
+                trend_data = db.query(
+                    Game.name,
+                    PlayerStats.timestamp,
+                    PlayerStats.current_players
+                ).join(PlayerStats).filter(
+                    Game.id.in_(selected_ids),
+                    PlayerStats.timestamp >= since
+                ).order_by(PlayerStats.timestamp).all()
+                
+                if trend_data:
+                    df_trend = pd.DataFrame([
+                        {
+                            'Game': t.name,
+                            'Timestamp': t.timestamp,
+                            'Players': t.current_players
+                        }
+                        for t in trend_data
+                    ])
+                    
+                    # Line chart with multiple series
+                    fig_trend = px.line(
+                        df_trend,
+                        x='Timestamp',
+                        y='Players',
+                        color='Game',
+                        title=f"Player Count Trends ({time_range})",
+                        markers=True
+                    )
+                    fig_trend.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='#ffffff',
+                        height=500,
+                        hovermode='x unified',
+                        legend=dict(
+                            orientation="h",
+                            yanchor="bottom",
+                            y=1.02,
+                            xanchor="right",
+                            x=1
+                        )
+                    )
+                    st.plotly_chart(fig_trend, use_container_width=True)
+                    
+                    # Statistics table
+                    st.markdown("##### 📈 Trend Statistics")
+                    stats_data = []
+                    for game_name in selected_trend_games:
+                        game_df = df_trend[df_trend['Game'] == game_name]
+                        if not game_df.empty:
+                            stats_data.append({
+                                'Game': game_name,
+                                'Current': f"{int(game_df['Players'].iloc[-1]):,}",
+                                'Peak': f"{int(game_df['Players'].max()):,}",
+                                'Average': f"{int(game_df['Players'].mean()):,}",
+                                'Min': f"{int(game_df['Players'].min()):,}",
+                                'Trend': '📈' if game_df['Players'].iloc[-1] > game_df['Players'].iloc[0] else '📉'
+                            })
+                    
+                    if stats_data:
+                        df_stats = pd.DataFrame(stats_data)
+                        st.dataframe(df_stats, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No trend data available for selected games.")
+            else:
+                st.info("Select games above to visualize player count trends.")
+        else:
+            st.info("📊 No games with player statistics available.")
     
     db.close()
 
