@@ -2,17 +2,48 @@
 Streamlit dashboard for Steam Insights.
 """
 
+import sys
+from pathlib import Path
+
+# Add project root to Python path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from src.database.connection import get_db, init_db
 from src.models.database import Game, Genre, PlayerStats, PricingHistory
 from src.api.steam_client import SteamAPIClient
 from src.etl.game_importer import GameDataImporter
+from src.dashboard.modules.data_management import (
+    show_top_charts, show_market_analytics, show_llm_mining
+)
+from src.dashboard.modules.concept_research import (
+    show_market_opportunities, show_genre_analysis,
+    show_revenue_projections, show_competition_analysis, show_tag_strategy
+)
+from src.dashboard.modules.preproduction import (
+    show_pricing_strategy, show_competitor_tracking, show_genre_trends,
+    show_similar_games, show_demo_calculator, show_benchmark_game,
+    show_review_estimator
+)
+from src.dashboard.modules.production_pages import (
+    show_overview, show_game_performance, show_market_position
+)
+from src.dashboard.modules.postlaunch_pages import (
+    show_game_search, show_analytics, show_market_analysis,
+    show_data_management
+)
+from src.dashboard.modules.analysis_pages import (
+    show_genre_saturation, show_rising_trends,
+    show_competition_calculator, show_market_positioning
+)
 
 # Page configuration
 st.set_page_config(
@@ -140,38 +171,945 @@ def get_session():
 def main():
     """Main dashboard function."""
     st.title("🎮 Steam Insights Dashboard")
+    st.markdown("*Data-driven game development & marketing intelligence*")
     st.markdown("---")
     
-    # Sidebar
+    # Sidebar with development stage navigation
     with st.sidebar:
-        st.header("Navigation")
-        page = st.radio(
-            "Select a page:",
-            ["Overview", "Game Search", "Analytics", "Market Analysis", "Data Management"]
+        st.header("🎯 Development Stage")
+        st.markdown("*Navigate by your current phase*")
+        
+        # Stage-based navigation
+        stage = st.selectbox(
+            "Where are you in development?",
+            [
+                "💡 Concept & Research",
+                "🎨 Pre-Production & Validation", 
+                "🔨 Production & Tracking",
+                "📢 Pre-Launch Marketing",
+                "🚀 Launch & Analytics",
+                "⚙️ Data Management"
+            ],
+            key="dev_stage_selector"
         )
         
         st.markdown("---")
-        st.markdown("### About")
+        
+        # Show relevant pages for selected stage
+        if stage == "💡 Concept & Research":
+            st.markdown("### Available Tools")
+            page = st.radio(
+                "Select analysis:",
+                [
+                    "🌟 Market Opportunities",
+                    "📊 Genre Analysis",
+                    "🔍 Game Search",
+                    "📈 Google Trends",
+                    "📊 Genre Saturation",
+                    "🔥 Rising Trends"
+                ],
+                label_visibility="collapsed",
+                key="concept_research_nav"
+            )
+            
+        elif stage == "🎨 Pre-Production & Validation":
+            st.markdown("### Available Tools")
+            page = st.radio(
+                "Select analysis:",
+                [
+                    "💎 Revenue Projections",
+                    "🎯 Competition Analysis",
+                    "🏷️ Tag Strategy",
+                    "💰 Pricing Strategy"
+                ],
+                label_visibility="collapsed",
+                key="preproduction_nav"
+            )
+            
+        elif stage == "🔨 Production & Tracking":
+            st.markdown("### Available Tools")
+            page = st.radio(
+                "Select analysis:",
+                [
+                    "👀 Competitor Tracking",
+                    "📈 Genre Trends",
+                    "🔍 Similar Games",
+                    "⚔️ Competition Calculator",
+                    "📊 Market Positioning"
+                ],
+                label_visibility="collapsed",
+                key="production_nav"
+            )
+            
+        elif stage == "📢 Pre-Launch Marketing":
+            st.markdown("### Available Tools")
+            page = st.radio(
+                "Select analysis:",
+                [
+                    "🚀 Demo Impact Calculator",
+                    "💎 Benchmark Your Game",
+                    "📊 Review Estimator",
+                    "📈 Trend Validation"
+                ],
+                label_visibility="collapsed",
+                key="prelaunch_nav"
+            )
+            
+        elif stage == "🚀 Launch & Analytics":
+            st.markdown("### Available Tools")
+            page = st.radio(
+                "Select analysis:",
+                [
+                    "📊 Dashboard Overview",
+                    "🎮 Game Performance",
+                    "📈 Market Position",
+                    "🔍 Post-Mortem Analysis"
+                ],
+                label_visibility="collapsed",
+                key="launch_analytics_nav"
+            )
+            
+        else:  # Data Management
+            st.markdown("### Available Tools")
+            page = st.radio(
+                "Select tool:",
+                [
+                    "⚙️ System Settings",
+                    "📊 Top Charts",
+                    "🔍 Market Analytics",
+                    "🤖 LLM Data Mining"
+                ],
+                label_visibility="collapsed",
+                key="data_mgmt_nav"
+            )
+        
+        st.markdown("---")
+        st.markdown("### 💡 Quick Guide")
+        
+        if stage == "💡 Concept & Research":
+            st.info(
+                "**Find your niche!**\n\n"
+                "• Discover golden age genres\n"
+                "• Analyze market saturation\n"
+                "• Research successful games\n"
+                "• Validate trends with Google"
+            )
+        elif stage == "🎨 Pre-Production & Validation":
+            st.info(
+                "**Validate your idea!**\n\n"
+                "• Project potential revenue\n"
+                "• Assess competition level\n"
+                "• Plan tag combinations\n"
+                "• Set optimal pricing"
+            )
+        elif stage == "🔨 Production & Tracking":
+            st.info(
+                "**Stay informed!**\n\n"
+                "• Monitor competitors\n"
+                "• Track genre momentum\n"
+                "• Study similar successes\n"
+                "• Adapt to market shifts"
+            )
+        elif stage == "📢 Pre-Launch Marketing":
+            st.info(
+                "**Build momentum!**\n\n"
+                "• Calculate demo impact\n"
+                "• Benchmark wishlists\n"
+                "• Estimate launch reviews\n"
+                "• Optimize marketing timing"
+            )
+        elif stage == "🚀 Launch & Analytics":
+            st.info(
+                "**Track & optimize!**\n\n"
+                "• Monitor real-time metrics\n"
+                "• Compare to benchmarks\n"
+                "• Analyze market position\n"
+                "• Learn for next project"
+            )
+        else:
+            st.info(
+                "**Manage your data**\n\n"
+                "• Import game databases\n"
+                "• Update Steam data\n"
+                "• Export analytics\n"
+                "• Configure settings"
+            )
+    
+    # Route to appropriate page based on selection
+    route_to_page(page, stage)
+
+
+def route_to_page(page: str, stage: str):
+    """Route to the appropriate page based on user selection."""
+    from src.dashboard.modules.marketing_pages import show_google_trends
+    
+    # Concept & Research Stage
+    if page == "🌟 Market Opportunities":
+        show_market_opportunities()
+    elif page == "📊 Genre Analysis":
+        show_genre_analysis()
+    elif page == "🔍 Game Search":
+        show_game_search()
+    elif page == "📈 Google Trends":
+        show_google_trends()
+    
+    elif page == "📊 Genre Saturation":
+        show_genre_saturation()
+    
+    elif page == "🔥 Rising Trends":
+        show_rising_trends()
+    
+    # Pre-Production & Validation Stage
+    elif page == "💎 Revenue Projections":
+        show_revenue_projections()
+    elif page == "🎯 Competition Analysis":
+        show_competition_analysis()
+    elif page == "🏷️ Tag Strategy":
+        show_tag_strategy()
+    elif page == "💰 Pricing Strategy":
+        show_pricing_strategy()
+    
+    # Production & Tracking Stage
+    elif page == "👀 Competitor Tracking":
+        show_competitor_tracking()
+    elif page == "📈 Genre Trends":
+        show_genre_trends()
+    elif page == "🔍 Similar Games":
+        show_similar_games()
+    
+    elif page == "⚔️ Competition Calculator":
+        show_competition_calculator()
+    
+    elif page == "📊 Market Positioning":
+        show_market_positioning()
+    
+    # Pre-Launch Marketing Stage
+    elif page == "🚀 Demo Impact Calculator":
+        show_demo_calculator()
+    elif page == "💎 Benchmark Your Game":
+        show_benchmark_game()
+    elif page == "📊 Review Estimator":
+        show_review_estimator()
+    elif page == "📈 Trend Validation":
+        show_google_trends()
+    
+    # Launch & Analytics Stage  
+    elif page == "📊 Dashboard Overview":
+        show_overview()
+    elif page == "🎮 Game Performance":
+        show_game_performance()
+    elif page == "📈 Market Position":
+        show_market_position()
+    elif page == "🔍 Post-Mortem Analysis":
+        show_analytics()
+    
+    # Data Management
+    elif page == "⚙️ System Settings":
+        show_data_management()
+    elif page == "📊 Top Charts":
+        show_top_charts()
+    elif page == "🔍 Market Analytics":
+        show_market_analytics()
+    elif page == "🤖 LLM Data Mining":
+        show_llm_mining()
+    
+    else:
+        # Default fallback
+        show_overview()
+
+
+# ============================================================================
+# LAUNCH & ANALYTICS STAGE PAGES
+# ============================================================================
+
+def show_game_performance():
+    """Show golden age opportunities and market gaps."""
+    st.header("🌟 Market Opportunities")
+    st.markdown("*Find emerging genres and underserved niches*")
+    
+    from datetime import datetime, timedelta
+    from src.models.database import Game, PlayerStats
+    
+    db = get_session()
+    from src.utils.market_insights import MarketInsightsAnalyzer
+    analyzer = MarketInsightsAnalyzer(db)
+    
+    tab1, tab2 = st.tabs(["🌟 Golden Age Genres", "📊 Genre Saturation"])
+    
+    with tab1:
+        st.subheader("Golden Age Opportunities")
         st.info(
-            "Steam Insights provides analytics and insights "
-            "for Steam games, including player counts, pricing history, "
-            "genre analysis, and market overlap analysis."
+            "**Chris Zukowski's 'Optimistic View' (Nov 2025)**\n\n"
+            "Many genres are exploding in popularity with short dev cycles. "
+            "Find genres with high success rates and low competition!"
+        )
+        
+        # Interactive filters
+        with st.expander("⚙️ Adjust Search Criteria", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                min_owners = st.number_input(
+                    "Min. avg owners (success threshold)",
+                    min_value=1000,
+                    max_value=100000,
+                    value=10000,
+                    step=5000,
+                    key="golden_min_owners"
+                )
+                max_competition = st.number_input(
+                    "Max. total games (competition limit)",
+                    min_value=100,
+                    max_value=5000,
+                    value=1000,
+                    step=100,
+                    key="golden_max_games"
+                )
+            with col2:
+                min_recent = st.number_input(
+                    "Min. recent releases (activity)",
+                    min_value=1,
+                    max_value=20,
+                    value=3,
+                    step=1,
+                    key="golden_min_recent"
+                )
+                lookback_days = st.number_input(
+                    "Lookback period (days)",
+                    min_value=30,
+                    max_value=365,
+                    value=180,
+                    step=30,
+                    key="golden_lookback"
+                )
+        
+        with st.spinner("Analyzing market opportunities..."):
+            opportunities = analyzer.analyze_golden_age_opportunities(
+                min_owners=min_owners,
+                max_total_games=max_competition,
+                min_recent_releases=min_recent,
+                lookback_days=lookback_days
+            )
+            
+            # Get diagnostic info
+            total_games = db.query(Game).count()
+            games_with_owners = db.query(Game).join(PlayerStats).filter(
+                PlayerStats.estimated_owners > min_owners
+            ).count()
+            recent_games = db.query(Game).filter(
+                Game.release_date >= datetime.now() - timedelta(days=lookback_days)
+            ).count()
+        
+        if opportunities:
+            import pandas as pd
+            df = pd.DataFrame(opportunities)
+            
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            
+            # Visualization
+            import plotly.express as px
+            fig = px.scatter(
+                df.head(15),
+                x='total_games',
+                y='avg_owners',
+                size='opportunity_score',
+                color='competition_level',
+                hover_data=['genre', 'recent_releases', 'trend'],
+                title='Market Opportunities Map',
+                labels={
+                    'total_games': 'Competition Level (Total Games)',
+                    'avg_owners': 'Success Potential (Avg Owners)',
+                    'opportunity_score': 'Opportunity Score'
+                },
+                color_discrete_map={
+                    'Low': '#00ff00',
+                    'Medium': '#ffff00', 
+                    'High': '#ff6b6b'
+                }
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.success(
+                "💡 **Best opportunities:** High avg_owners + "
+                "Low total_games + Growing trend"
+            )
+        else:
+            st.warning("⚠️ No clear opportunities found in current data.")
+            
+            with st.expander("🔍 Diagnostic Information - What was analyzed?"):
+                st.write(f"**Total games in database:** {total_games:,}")
+                st.write(f"**Games with {min_owners:,}+ owners:** {games_with_owners:,}")
+                st.write(f"**Recent releases (last {lookback_days} days):** {recent_games:,}")
+                
+                st.markdown("---")
+                st.markdown("**Why no opportunities?**")
+                st.write("The algorithm looks for genres that meet ALL criteria:")
+                st.write(f"- ✓ At least {min_recent} releases in last {lookback_days} days")
+                st.write(f"- ✓ Less than {max_competition:,} total games (low competition)")
+                st.write(f"- ✓ Average {min_owners:,}+ owners (proven success)")
+                st.write("- ✓ Growing trend (recent releases > 10% of total)")
+                
+                st.info("💡 **Suggestion:** Try adjusting the criteria above or import more recent games.")
+    
+    with tab2:
+        st.subheader("Genre Saturation Analysis")
+        st.info(
+            "Lower saturation = easier to stand out. "
+            "Find underserved niches!"
+        )
+        
+        with st.spinner("Analyzing genre saturation..."):
+            results = analyzer.analyze_genre_saturation()
+        
+        if results:
+            import pandas as pd
+            df = pd.DataFrame(results)
+            
+            # Color-coded display
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            
+            # Chart
+            import plotly.express as px
+            fig = px.bar(
+                df.head(15),
+                x='genre',
+                y='game_count',
+                color='opportunity',
+                title='Top Genres by Competition Level',
+                color_discrete_map={
+                    'High': '#00ff00',
+                    'Medium': '#ffff00',
+                    'Low': '#ff6b6b'
+                }
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+
+def show_genre_analysis():
+    """Detailed genre performance analysis."""
+    st.header("📊 Genre Analysis")
+    st.markdown("*Deep dive into genre performance and trends*")
+    
+    # Reuse existing analytics content
+    show_analytics()
+
+
+# ============================================================================
+# PRE-PRODUCTION & VALIDATION STAGE PAGES
+# ============================================================================
+
+def show_revenue_projections():
+    """Revenue projection calculator."""
+    st.header("💎 Revenue Projections")
+    st.markdown("*Calculate potential revenue using real benchmarks*")
+    
+    db = get_session()
+    from src.utils.market_insights import MarketInsightsAnalyzer
+    analyzer = MarketInsightsAnalyzer(db)
+    
+    st.markdown("""
+    ### 📊 Conversion Benchmarks (Chris Zukowski)
+    Based on 2020-2025 industry data:
+    - **Bronze tier:** 11.93% conversion ($1K revenue)
+    - **Silver tier:** 20.49% conversion ($10K revenue)
+    - **Gold tier:** 25.35% conversion ($100K revenue)  
+    - **Diamond tier:** 27.08% conversion ($1M revenue)
+    """)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        wishlists = st.number_input(
+            "Estimated wishlists at launch",
+            min_value=100,
+            max_value=500000,
+            value=10000,
+            step=1000,
+            help="Target wishlist count by launch day"
+        )
+    with col2:
+        price = st.number_input(
+            "Game price (USD)",
+            min_value=1.0,
+            max_value=100.0,
+            value=19.99,
+            step=0.50,
+            help="Your planned launch price"
         )
     
-    # Route to different pages
-    if page == "Overview":
-        show_overview()
-    elif page == "Game Search":
-        show_game_search()
-    elif page == "Analytics":
-        show_analytics()
-    elif page == "Market Analysis":
-        show_market_analysis()
-    elif page == "Data Management":
-        show_data_management()
+    if st.button("Calculate Revenue Potential", type="primary"):
+        with st.spinner("Running projections..."):
+            projections = analyzer.calculate_revenue_projections(
+                wishlists,
+                price
+            )
+        
+        st.success("✅ Projections calculated!")
+        
+        # Display results by tier
+        import pandas as pd
+        data = []
+        for tier, proj in projections['projections_by_tier'].items():
+            data.append({
+                'Tier': tier.title(),
+                'Conversion Rate': f"{proj['conversion_rate']}%",
+                'Estimated Sales': f"{proj['estimated_sales']:,}",
+                'Gross Revenue': f"${proj['gross_revenue']:,.2f}",
+                'Net Revenue (after Steam 30%)': f"${proj['net_revenue']:,.2f}"
+            })
+        
+        df = pd.DataFrame(data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        # Highlight gold/diamond tiers
+        col1, col2 = st.columns(2)
+        with col1:
+            gold_net = projections['projections_by_tier']['gold']['net_revenue']
+            st.metric(
+                "Gold Tier Target",
+                f"${gold_net:,.0f}",
+                help="25.35% conversion rate"
+            )
+        with col2:
+            diamond_net = projections['projections_by_tier']['diamond']['net_revenue']
+            st.metric(
+                "Diamond Tier Target", 
+                f"${diamond_net:,.0f}",
+                help="27.08% conversion rate"
+            )
+        
+        st.info("💡 " + " | ".join(projections['notes']))
+        
+        st.markdown("""
+        ### 🎯 How to Reach Higher Tiers
+        - **Build more wishlists:** Marketing, demos, Steam Next Fest
+        - **Improve conversion:** Polish, reviews, launch timing
+        - **Optimize pricing:** Test different price points
+        """)
 
 
-def show_overview():
+def show_competition_analysis():
+    """Competition scoring and analysis."""
+    st.header("🎯 Competition Analysis") 
+    st.markdown("*Evaluate how competitive your genre/tags are*")
+    
+    db = get_session()
+    from src.utils.market_insights import MarketInsightsAnalyzer
+    analyzer = MarketInsightsAnalyzer(db)
+    
+    st.info(
+        "**Competition Index Formula:**\n\n"
+        "More games + Lower average success = Higher competition\n\n"
+        "Target 'Easy' or 'Moderate' markets for best chances!"
+    )
+    
+    # Tag input
+    tag_input = st.text_input(
+        "Enter your game tags (comma-separated)",
+        "Indie, Singleplayer, Adventure",
+        help="Tags that describe your game"
+    )
+    
+    if st.button("Calculate Competition", type="primary"):
+        tags = [t.strip() for t in tag_input.split(',')]
+        
+        with st.spinner("Analyzing competition..."):
+            result = analyzer.calculate_competition_index(tags)
+        
+        # Display results
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Games", f"{result['total_games']:,}")
+        with col2:
+            st.metric("Average Owners", f"{result['avg_owners']:,}")
+        with col3:
+            difficulty = result['difficulty']
+            color_map = {
+                'Easy': '🟢',
+                'Moderate': '🟡',
+                'Hard': '🟠',
+                'Very Hard': '🔴'
+            }
+            st.metric(
+                "Difficulty",
+                f"{color_map.get(difficulty, '⚪')} {difficulty}"
+            )
+        
+        st.metric(
+            "Competition Index",
+            f"{result['competition_index']:.2f}",
+            help="Lower is better"
+        )
+        
+        # Show similar successful games
+        st.subheader("🏆 Successful Games in This Space")
+        with st.spinner("Finding similar successful games..."):
+            similar = analyzer.find_similar_successful_games(tags)
+        
+        if similar:
+            for game in similar[:10]:
+                with st.expander(
+                    f"🎮 {game['name']} - {game['owners']:,} owners"
+                ):
+                    st.write(f"**Tags:** {', '.join(game['matching_tags'])}")
+                    st.write(f"**All Tags:** {', '.join(game['tags'])}")
+                    st.write(f"**Steam ID:** {game['steam_appid']}")
+
+
+def show_tag_strategy():
+    """Tag combination analysis."""
+    st.header("🏷️ Tag Strategy")
+    st.markdown("*Find winning tag combinations*")
+    
+    db = get_session()
+    from src.utils.market_insights import MarketInsightsAnalyzer
+    analyzer = MarketInsightsAnalyzer(db)
+    
+    st.info(
+        "Discover which tag combinations lead to success. "
+        "Learn from what works!"
+    )
+    
+    min_owners = st.slider(
+        "Minimum owners to consider 'successful'",
+        10000,
+        500000,
+        100000,
+        10000
+    )
+    
+    with st.spinner("Analyzing tag combinations..."):
+        results = analyzer.find_tag_combinations(min_owners)
+    
+    if results:
+        for combo in results[:15]:
+            with st.expander(
+                f"🏆 {combo['tag_combination']} - "
+                f"{combo['successful_games']} successful games"
+            ):
+                st.metric("Average Owners", f"{combo['avg_owners']:,}")
+                st.write(f"**Examples:** {', '.join(combo['examples'])}")
+
+
+def show_pricing_strategy():
+    """Pricing sweet spot analysis."""
+    st.header("💰 Pricing Strategy")
+    st.markdown("*Find optimal price points for your genre*")
+    
+    db = get_session()
+    from src.utils.market_insights import MarketInsightsAnalyzer
+    analyzer = MarketInsightsAnalyzer(db)
+    
+    st.info(
+        "Price signals quality and affects conversion rates. "
+        "Find the sweet spot!"
+    )
+    
+    with st.spinner("Analyzing pricing data..."):
+        results = analyzer.analyze_pricing_sweet_spots()
+    
+    if results:
+        import pandas as pd
+        df = pd.DataFrame(results)
+        
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        # Chart
+        import plotly.express as px
+        fig = px.scatter(
+            df,
+            x='avg_price',
+            y='avg_owners',
+            size='game_count',
+            color='revenue_estimate',
+            hover_data=['price_range'],
+            title='Price vs Success',
+            labels={
+                'avg_price': 'Average Price',
+                'avg_owners': 'Average Owners',
+                'revenue_estimate': 'Est. Revenue'
+            }
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+
+# ============================================================================
+# PRODUCTION & TRACKING STAGE PAGES
+# ============================================================================
+
+def show_competitor_tracking():
+    """Track specific competitors."""
+    st.header("👀 Competitor Tracking")
+    st.markdown("*Monitor similar games during development*")
+    
+    show_game_search()
+
+
+def show_genre_trends():
+    """Show rising and falling genre trends."""
+    st.header("📈 Genre Trends & Momentum")
+    st.markdown("*Track what's hot and what's not*")
+    
+    db = get_session()
+    from src.utils.market_insights import MarketInsightsAnalyzer
+    analyzer = MarketInsightsAnalyzer(db)
+    
+    days = st.slider(
+        "Time window (days)",
+        7,
+        180,
+        90,
+        help="How far back to look for trends"
+    )
+    
+    with st.spinner("Analyzing genre momentum..."):
+        results = analyzer.find_rising_trends(days)
+    
+    if results:
+        import pandas as pd
+        df = pd.DataFrame(results)
+        
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        # Chart
+        import plotly.express as px
+        fig = px.bar(
+            df.head(15),
+            x='genre',
+            y='momentum_score',
+            title=f'Genre Momentum (Last {days} Days)',
+            color='momentum_score',
+            color_continuous_scale='Viridis'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+
+def show_similar_games():
+    """Find and analyze similar successful games."""
+    st.header("🔍 Similar Successful Games")
+    st.markdown("*Learn from games like yours*")
+    
+    show_competition_analysis()
+
+
+# ============================================================================
+# PRE-LAUNCH MARKETING STAGE PAGES
+# ============================================================================
+
+def show_demo_calculator():
+    """Demo impact calculator."""
+    st.header("🚀 Demo Impact Calculator")
+    st.markdown("*Estimate wishlist boost from releasing a demo*")
+    
+    db = get_session()
+    from src.utils.market_insights import MarketInsightsAnalyzer
+    analyzer = MarketInsightsAnalyzer(db)
+    
+    st.markdown("""
+    ### 📊 The Demo Effect (Chris Zukowski, Aug 2025)
+    **Case Study: Parcel Simulator**
+    - Before demo: 7,000 wishlists
+    - After demo: 42,000 wishlists
+    - **6x multiplier!**
+    
+    Quality demos are powerful marketing tools.
+    """)
+    
+    current_wl = st.number_input(
+        "Current wishlist count",
+        min_value=100,
+        max_value=100000,
+        value=5000,
+        step=100
+    )
+    
+    if st.button("Calculate Demo Impact", type="primary"):
+        with st.spinner("Calculating potential..."):
+            impact = analyzer.calculate_demo_impact_potential(current_wl)
+        
+        st.success("✅ Demo impact projections ready!")
+        
+        import pandas as pd
+        data = []
+        for quality, proj in impact['projections'].items():
+            data.append({
+                'Demo Quality': quality.replace('_', ' ').title(),
+                'Multiplier': f"{proj['multiplier']}x",
+                'Projected Wishlists': f"{proj['projected_wishlists']:,}",
+                'Expected Gain': f"+{proj['expected_gain']:,}"
+            })
+        
+        df = pd.DataFrame(data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        # Highlight excellent demo potential
+        excellent = impact['projections']['excellent_demo']
+        st.metric(
+            "🌟 Excellent Demo Potential",
+            f"{excellent['projected_wishlists']:,} wishlists",
+            delta=f"+{excellent['expected_gain']:,}"
+        )
+        
+        st.markdown("### 💡 Demo Best Practices")
+        for rec in impact['recommendations']:
+            st.info(f"✓ {rec}")
+
+
+def show_benchmark_game():
+    """Benchmark game against industry tiers."""
+    st.header("💎 Benchmark Your Game")
+    st.markdown("*Compare your metrics to industry benchmarks*")
+    
+    db = get_session()
+    from src.utils.market_insights import MarketInsightsAnalyzer
+    analyzer = MarketInsightsAnalyzer(db)
+    
+    st.markdown("""
+    ### 📊 Industry Benchmark Tiers
+    **Wishlist Targets:**
+    - 🥉 Bronze: 6,000 wishlists
+    - 🥈 Silver: 6,000 wishlists  
+    - 🥇 Gold: 30,000 wishlists
+    - 💎 Diamond: 150,000+ wishlists
+    
+    **Weekly Growth Targets:**
+    - Bronze: 0-40/week
+    - Silver: 40-100/week
+    - Gold: 100-300/week
+    - Diamond: 300-3,000/week
+    """)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        total_wishlists = st.number_input(
+            "Total wishlists",
+            min_value=0,
+            max_value=500000,
+            value=5000,
+            step=100
+        )
+    with col2:
+        weekly_wishlists = st.number_input(
+            "Wishlists gained last week",
+            min_value=0,
+            max_value=10000,
+            value=50,
+            step=10
+        )
+    
+    if st.button("Benchmark My Game", type="primary"):
+        with st.spinner("Analyzing performance..."):
+            benchmark = analyzer.benchmark_against_tier(
+                total_wishlists,
+                weekly_wishlists
+            )
+        
+        tier = benchmark['wishlist_tier'].title()
+        tier_icons = {
+            'Bronze': '🥉',
+            'Silver': '🥈',
+            'Gold': '🥇',
+            'Diamond': '💎',
+            'Below_Bronze': '⚪'
+        }
+        
+        st.markdown(
+            f"## Your Tier: {tier_icons.get(tier, '❓')} {tier}"
+        )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(
+                "Total Wishlists",
+                f"{benchmark['current_metrics']['total_wishlists']:,}"
+            )
+        with col2:
+            st.metric(
+                "Weekly Wishlists",
+                f"{benchmark['current_metrics']['weekly_wishlists']:,}"
+            )
+        
+        if benchmark['next_tier_targets']:
+            st.markdown("### 🎯 Next Tier Goals")
+            targets = benchmark['next_tier_targets']
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(
+                    f"Wishlists Needed for {targets['tier'].title()}",
+                    f"{targets['wishlists_needed']:,}"
+                )
+            with col2:
+                weeks = targets['weeks_at_current_rate']
+                if weeks == float('inf'):
+                    st.metric("Weeks at Current Rate", "∞")
+                else:
+                    st.metric("Weeks at Current Rate", f"{int(weeks)}")
+        
+        if benchmark['recommendations']:
+            st.markdown("### 💡 Recommendations")
+            for rec in benchmark['recommendations']:
+                st.warning(rec)
+
+
+def show_review_estimator():
+    """Review count estimator."""
+    st.header("📊 Review Count Estimator")
+    st.markdown("*Estimate launch reviews using the Boxleiter Number*")
+    
+    db = get_session()
+    from src.utils.market_insights import MarketInsightsAnalyzer
+    analyzer = MarketInsightsAnalyzer(db)
+    
+    st.markdown("""
+    ### 📊 The Boxleiter Number
+    Industry metric for sales-to-review ratio:
+    - **2021 median:** 31 sales per review
+    - **Historical trend:** Declining from 79 (2013-2017)
+    - **Varies by:** Genre, quality, engagement
+    """)
+    
+    projected_sales = st.number_input(
+        "Projected first-week sales",
+        min_value=10,
+        max_value=100000,
+        value=1000,
+        step=100
+    )
+    
+    if st.button("Estimate Reviews", type="primary"):
+        with st.spinner("Calculating..."):
+            estimate = analyzer.estimate_review_count(projected_sales)
+        
+        st.success("✅ Review estimate calculated!")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(
+                "Projected Sales",
+                f"{estimate['projected_sales']:,}"
+            )
+        with col2:
+            st.metric(
+                "Estimated Reviews",
+                f"{estimate['estimated_reviews']:,}"
+            )
+        with col3:
+            st.metric(
+                "Sales per Review",
+                estimate['sales_per_review_ratio']
+            )
+        
+        st.markdown("### 📝 Important Notes")
+        for note in estimate['notes']:
+            st.info(note)
+
+
+# ============================================================================
+# LAUNCH & ANALYTICS STAGE PAGES
+# ============================================================================
+
+# ============================================================================
+# LAUNCH & ANALYTICS STAGE PAGES
+# ============================================================================
     """Show overview page with key statistics."""
     st.header("📊 Dashboard Overview")
     
@@ -191,15 +1129,15 @@ def show_overview():
     
     with col3:
         recent_stats = db.query(PlayerStats).filter(
-            PlayerStats.timestamp >= datetime.utcnow() - timedelta(hours=24)
+            PlayerStats.timestamp >= datetime.now(timezone.utc) - timedelta(hours=24)
         ).count()
         st.metric("Recent Updates (24h)", f"{recent_stats:,}", help="Stats updates in last 24h")
     
     with col4:
         avg_players = db.query(PlayerStats).filter(
-            PlayerStats.timestamp >= datetime.utcnow() - timedelta(hours=1)
+            PlayerStats.timestamp >= datetime.now(timezone.utc) - timedelta(hours=1)
         ).with_entities(
-            db.func.avg(PlayerStats.current_players)
+            func.avg(PlayerStats.current_players)
         ).scalar()
         st.metric("Avg Current Players", f"{int(avg_players or 0):,}", help="Average players across all games")
     
@@ -213,9 +1151,9 @@ def show_overview():
         
         genre_counts = db.query(
             Genre.name,
-            db.func.count(Game.id).label('count')
+            func.count(Game.id).label('count')
         ).join(Genre.games).group_by(Genre.name).order_by(
-            db.func.count(Game.id).desc()
+            func.count(Game.id).desc()
         ).limit(10).all()
         
         if genre_counts:
@@ -294,12 +1232,12 @@ def show_overview():
         top_games = db.query(
             Game.name,
             Game.developer,
-            db.func.max(PlayerStats.current_players).label('peak_players'),
-            db.func.avg(PlayerStats.current_players).label('avg_players')
+            func.max(PlayerStats.current_players).label('peak_players'),
+            func.avg(PlayerStats.current_players).label('avg_players')
         ).join(PlayerStats).filter(
-            PlayerStats.timestamp >= datetime.utcnow() - timedelta(days=7)
+            PlayerStats.timestamp >= datetime.now(timezone.utc) - timedelta(days=7)
         ).group_by(Game.name, Game.developer).order_by(
-            db.func.max(PlayerStats.current_players).desc()
+            func.max(PlayerStats.current_players).desc()
         ).limit(10).all()
         
         if top_games:
@@ -326,1048 +1264,17 @@ def show_overview():
     db.close()
 
 
-def show_game_search():
-    """Show game search and details page."""
-    st.header("Game Search")
-    
-    db = get_session()
-    
-    # Search input
-    search_term = st.text_input("Search for a game:", placeholder="Enter game name...")
-    
-    if search_term:
-        games = db.query(Game).filter(
-            Game.name.ilike(f"%{search_term}%")
-        ).limit(20).all()
-        
-        if games:
-            st.write(f"Found {len(games)} game(s)")
-            
-            # Display games
-            for game in games:
-                with st.expander(f"🎮 {game.name}"):
-                    col1, col2 = st.columns([2, 1])
-                    
-                    with col1:
-                        st.write(f"**Developer:** {game.developer or 'Unknown'}")
-                        st.write(f"**Publisher:** {game.publisher or 'Unknown'}")
-                        st.write(f"**Release Date:** {game.release_date.strftime('%Y-%m-%d') if game.release_date else 'N/A'}")
-                        st.write(f"**Steam App ID:** {game.steam_appid}")
-                        
-                        if game.short_description:
-                            st.write("**Description:**")
-                            st.write(game.short_description)
-                        
-                        if game.genres:
-                            genres = [g.name for g in game.genres]
-                            st.write(f"**Genres:** {', '.join(genres)}")
-                    
-                    with col2:
-                        if game.header_image:
-                            st.image(game.header_image)
-                        
-                        # Platform badges
-                        platforms = []
-                        if game.windows:
-                            platforms.append("🪟 Windows")
-                        if game.mac:
-                            platforms.append("🍎 Mac")
-                        if game.linux:
-                            platforms.append("🐧 Linux")
-                        
-                        if platforms:
-                            st.write("**Platforms:**")
-                            for platform in platforms:
-                                st.write(platform)
-                    
-                    # Player stats chart
-                    stats = db.query(PlayerStats).filter(
-                        PlayerStats.game_id == game.id,
-                        PlayerStats.timestamp >= datetime.utcnow() - timedelta(days=30)
-                    ).order_by(PlayerStats.timestamp).all()
-                    
-                    if stats:
-                        st.write("**Player Count (Last 30 Days)**")
-                        df_stats = pd.DataFrame([
-                            {'Date': s.timestamp, 'Players': s.current_players}
-                            for s in stats
-                        ])
-                        fig = px.line(df_stats, x='Date', y='Players')
-                        st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.warning(f"No games found matching '{search_term}'")
-    
-    db.close()
-
-
-def show_analytics():
-    """Show analytics page with charts and insights."""
-    st.header("📈 Advanced Analytics")
-    
-    db = get_session()
-    
-    # Filters sidebar
-    with st.sidebar:
-        st.markdown("### 🔍 Filters")
-        time_range = st.selectbox(
-            "Time Range:",
-            ["Last 24 Hours", "Last 7 Days", "Last 30 Days", "Last 90 Days"],
-            index=2
-        )
-        
-        # Genre filter
-        all_genres = db.query(Genre.name).order_by(Genre.name).all()
-        genre_names = [g[0] for g in all_genres]
-        selected_genres = st.multiselect(
-            "Filter by Genre:",
-            options=genre_names,
-            help="Leave empty to show all genres"
-        )
-    
-    days_map = {
-        "Last 24 Hours": 1,
-        "Last 7 Days": 7,
-        "Last 30 Days": 30,
-        "Last 90 Days": 90
-    }
-    days = days_map[time_range]
-    since = datetime.utcnow() - timedelta(days=days)
-    
-    # Create tabs for different analytics views
-    tab1, tab2, tab3 = st.tabs(["🎮 Player Analytics", "💰 Market Insights", "📊 Trend Analysis"])
-    
-    with tab1:
-        st.markdown(f"#### Top Performing Games ({time_range})")
-        
-        # Query for active games
-        query = db.query(
-            Game.name,
-            db.func.max(PlayerStats.current_players).label('max_players'),
-            db.func.avg(PlayerStats.current_players).label('avg_players'),
-            db.func.count(PlayerStats.id).label('data_points')
-        ).join(PlayerStats).filter(
-            PlayerStats.timestamp >= since
-        )
-        
-        # Apply genre filter if selected
-        if selected_genres:
-            query = query.join(Game.genres).filter(Genre.name.in_(selected_genres))
-        
-        active_games = query.group_by(Game.name).order_by(
-            db.func.max(PlayerStats.current_players).desc()
-        ).limit(15).all()
-        
-        if active_games:
-            col1, col2 = st.columns([2, 1])
-            
-            with col1:
-                # Interactive bar chart
-                df_active = pd.DataFrame(
-                    active_games,
-                    columns=['Game', 'Peak Players', 'Avg Players', 'Data Points']
-                )
-                df_active['Peak Players'] = df_active['Peak Players'].astype(int)
-                df_active['Avg Players'] = df_active['Avg Players'].astype(int)
-                
-                fig = go.Figure()
-                fig.add_trace(go.Bar(
-                    name='Peak Players',
-                    x=df_active['Game'],
-                    y=df_active['Peak Players'],
-                    marker_color='#00d4ff'
-                ))
-                fig.add_trace(go.Bar(
-                    name='Avg Players',
-                    x=df_active['Game'],
-                    y=df_active['Avg Players'],
-                    marker_color='#4da6ff'
-                ))
-                
-                fig.update_layout(
-                    barmode='group',
-                    title=f"Top 15 Games by Player Count",
-                    xaxis_tickangle=-45,
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#ffffff',
-                    height=500,
-                    hovermode='x unified'
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                # Statistics summary
-                st.markdown("##### 📊 Summary Statistics")
-                
-                total_peak = df_active['Peak Players'].sum()
-                avg_peak = df_active['Peak Players'].mean()
-                top_game = df_active.iloc[0]
-                
-                st.metric("Total Peak Players", f"{total_peak:,}")
-                st.metric("Average Peak", f"{int(avg_peak):,}")
-                st.metric("Top Game", f"{top_game['Game'][:20]}...")
-                st.metric("Peak", f"{int(top_game['Peak Players']):,}")
-                
-                # Market share visualization
-                st.markdown("##### Market Share (Top 5)")
-                top_5 = df_active.head(5)
-                fig_pie = px.pie(
-                    top_5,
-                    values='Peak Players',
-                    names='Game',
-                    hole=0.4
-                )
-                fig_pie.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#ffffff',
-                    height=300,
-                    showlegend=False
-                )
-                st.plotly_chart(fig_pie, use_container_width=True)
-        else:
-            st.info("📊 No player statistics available for the selected filters.")
-    
-    with tab2:
-        st.markdown(f"#### Market Insights & Ownership Data")
-        
-        # Get games with ownership data
-        ownership_query = db.query(
-            Game.name,
-            Game.developer,
-            db.func.max(PlayerStats.estimated_owners).label('owners'),
-            db.func.max(PlayerStats.estimated_revenue).label('revenue')
-        ).join(PlayerStats).filter(
-            PlayerStats.estimated_owners.isnot(None),
-            PlayerStats.timestamp >= since
-        )
-        
-        if selected_genres:
-            ownership_query = ownership_query.join(Game.genres).filter(Genre.name.in_(selected_genres))
-        
-        ownership_data = ownership_query.group_by(
-            Game.name, Game.developer
-        ).order_by(
-            db.func.max(PlayerStats.estimated_owners).desc()
-        ).limit(20).all()
-        
-        if ownership_data:
-            df_ownership = pd.DataFrame([
-                {
-                    'Game': o.name,
-                    'Developer': o.developer or 'Unknown',
-                    'Est. Owners': int(o.owners) if o.owners else 0,
-                    'Est. Revenue': f"${int(o.revenue):,}" if o.revenue else 'N/A'
-                }
-                for o in ownership_data
-            ])
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # Ownership distribution
-                fig_owners = px.bar(
-                    df_ownership.head(10),
-                    x='Game',
-                    y='Est. Owners',
-                    color='Est. Owners',
-                    color_continuous_scale='Viridis',
-                    title="Top 10 Games by Ownership"
-                )
-                fig_owners.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#ffffff',
-                    xaxis_tickangle=-45,
-                    height=400
-                )
-                st.plotly_chart(fig_owners, use_container_width=True)
-            
-            with col2:
-                # Treemap visualization
-                fig_tree = px.treemap(
-                    df_ownership.head(15),
-                    path=['Developer', 'Game'],
-                    values='Est. Owners',
-                    title="Ownership by Developer"
-                )
-                fig_tree.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#ffffff',
-                    height=400
-                )
-                st.plotly_chart(fig_tree, use_container_width=True)
-            
-            # Data table
-            st.markdown("##### 📋 Detailed Ownership Data")
-            st.dataframe(df_ownership, use_container_width=True, height=300, hide_index=True)
-        else:
-            st.info("💡 No ownership data available. Import games with estimated_owners to see market insights.")
-    
-    with tab3:
-        st.markdown(f"#### Trend Analysis")
-        
-        # Get time series data for selected games
-        st.markdown("##### Select games to visualize trends:")
-        
-        available_games = db.query(Game.name, Game.id).join(PlayerStats).group_by(
-            Game.name, Game.id
-        ).limit(50).all()
-        
-        if available_games:
-            game_dict = {g.name: g.id for g in available_games}
-            selected_trend_games = st.multiselect(
-                "Choose games:",
-                options=list(game_dict.keys()),
-                default=list(game_dict.keys())[:3] if len(game_dict) >= 3 else list(game_dict.keys())
-            )
-            
-            if selected_trend_games:
-                # Fetch time series data
-                selected_ids = [game_dict[name] for name in selected_trend_games]
-                
-                trend_data = db.query(
-                    Game.name,
-                    PlayerStats.timestamp,
-                    PlayerStats.current_players
-                ).join(PlayerStats).filter(
-                    Game.id.in_(selected_ids),
-                    PlayerStats.timestamp >= since
-                ).order_by(PlayerStats.timestamp).all()
-                
-                if trend_data:
-                    df_trend = pd.DataFrame([
-                        {
-                            'Game': t.name,
-                            'Timestamp': t.timestamp,
-                            'Players': t.current_players
-                        }
-                        for t in trend_data
-                    ])
-                    
-                    # Line chart with multiple series
-                    fig_trend = px.line(
-                        df_trend,
-                        x='Timestamp',
-                        y='Players',
-                        color='Game',
-                        title=f"Player Count Trends ({time_range})",
-                        markers=True
-                    )
-                    fig_trend.update_layout(
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#ffffff',
-                        height=500,
-                        hovermode='x unified',
-                        legend=dict(
-                            orientation="h",
-                            yanchor="bottom",
-                            y=1.02,
-                            xanchor="right",
-                            x=1
-                        )
-                    )
-                    st.plotly_chart(fig_trend, use_container_width=True)
-                    
-                    # Statistics table
-                    st.markdown("##### 📈 Trend Statistics")
-                    stats_data = []
-                    for game_name in selected_trend_games:
-                        game_df = df_trend[df_trend['Game'] == game_name]
-                        if not game_df.empty:
-                            stats_data.append({
-                                'Game': game_name,
-                                'Current': f"{int(game_df['Players'].iloc[-1]):,}",
-                                'Peak': f"{int(game_df['Players'].max()):,}",
-                                'Average': f"{int(game_df['Players'].mean()):,}",
-                                'Min': f"{int(game_df['Players'].min()):,}",
-                                'Trend': '📈' if game_df['Players'].iloc[-1] > game_df['Players'].iloc[0] else '📉'
-                            })
-                    
-                    if stats_data:
-                        df_stats = pd.DataFrame(stats_data)
-                        st.dataframe(df_stats, use_container_width=True, hide_index=True)
-                else:
-                    st.info("No trend data available for selected games.")
-            else:
-                st.info("Select games above to visualize player count trends.")
-        else:
-            st.info("📊 No games with player statistics available.")
-    
-    db.close()
-
-
-def show_market_analysis():
-    """Show market analysis page for game ownership overlap."""
-    st.header("Market Analysis - Game Ownership Overlap")
-    
-    st.markdown("""
-    Analyze the overlap between game audiences to determine addressable markets 
-    when combining different game types or genres.
-    """)
-    
-    db = get_session()
-    
-    # Get all games with ownership data
-    games_with_owners = db.query(
-        Game.id,
-        Game.name,
-        Game.steam_appid,
-        db.func.max(PlayerStats.estimated_owners).label('owners')
-    ).join(PlayerStats).filter(
-        PlayerStats.estimated_owners.isnot(None)
-    ).group_by(Game.id, Game.name, Game.steam_appid).order_by(
-        Game.name
-    ).all()
-    
-    if not games_with_owners or len(games_with_owners) < 2:
-        st.warning(
-            "⚠️ Not enough games with ownership data. "
-            "Import games and ensure they have player statistics with estimated_owners populated."
-        )
-        st.info(
-            "💡 Tip: The estimated_owners field tracks how many users own each game. "
-            "This data is typically available from SteamSpy or similar services."
-        )
-        db.close()
-        return
-    
-    st.markdown("---")
-    
-    # Game selection for comparison
-    st.subheader("📊 Select Games to Compare")
-    
-    col1, col2 = st.columns(2)
-    
-    game_options = {f"{g.name} ({g.owners:,} owners)": g for g in games_with_owners}
-    
-    with col1:
-        game1_name = st.selectbox(
-            "Game A:",
-            options=list(game_options.keys()),
-            help="Select the first game"
-        )
-        game1 = game_options[game1_name]
-    
-    with col2:
-        # Filter out the first game from second selection
-        game2_options = {k: v for k, v in game_options.items() if v.id != game1.id}
-        game2_name = st.selectbox(
-            "Game B:",
-            options=list(game2_options.keys()),
-            help="Select the second game to compare"
-        )
-        game2 = game2_options[game2_name]
-    
-    # Option for additional games
-    st.markdown("---")
-    additional_games = st.multiselect(
-        "➕ Add more games (optional):",
-        options=[k for k, v in game_options.items() if v.id not in [game1.id, game2.id]],
-        help="Select additional games to include in the analysis"
-    )
-    
-    # Build list of all selected games
-    selected_games = [game1, game2]
-    for game_name in additional_games:
-        selected_games.append(game_options[game_name])
-    
-    st.markdown("---")
-    
-    # Market overlap analysis
-    st.subheader("🎯 Market Overlap Analysis")
-    
-    # Calculate overlap estimates
-    # Note: Since we don't have actual user-level data, we estimate overlap
-    # based on genre similarity and market penetration
-    
-    # Get genres for each game
-    game_genres = {}
-    for game in selected_games:
-        game_obj = db.query(Game).filter(Game.id == game.id).first()
-        game_genres[game.id] = [g.name for g in game_obj.genres]
-    
-    # Calculate genre overlap score
-    def calculate_overlap_factor(game1_id, game2_id):
-        """Estimate overlap factor based on genre similarity."""
-        genres1 = set(game_genres.get(game1_id, []))
-        genres2 = set(game_genres.get(game2_id, []))
-        
-        if not genres1 or not genres2:
-            return 0.15  # Default 15% overlap if no genre data
-        
-        # Calculate Jaccard similarity
-        intersection = len(genres1 & genres2)
-        union = len(genres1 | genres2)
-        
-        if union == 0:
-            return 0.15
-        
-        jaccard = intersection / union
-        
-        # Scale to 10-40% overlap range based on similarity
-        # More similar genres = higher overlap
-        overlap = 0.10 + (jaccard * 0.30)
-        return overlap
-    
-    # Display individual game statistics
-    st.markdown("### 📈 Individual Game Statistics")
-    
-    cols = st.columns(len(selected_games))
-    for idx, game in enumerate(selected_games):
-        with cols[idx]:
-            st.metric(
-                f"**{game.name}**",
-                f"{game.owners:,}",
-                help=f"Estimated owners for {game.name}"
-            )
-            if game.id in game_genres and game_genres[game.id]:
-                st.caption(f"Genres: {', '.join(game_genres[game.id][:3])}")
-    
-    st.markdown("---")
-    
-    # Two-game comparison
-    if len(selected_games) == 2:
-        st.markdown("### 🔄 Ownership Overlap (2-Game Analysis)")
-        
-        overlap_factor = calculate_overlap_factor(game1.id, game2.id)
-        
-        # Estimate overlap
-        smaller_audience = min(game1.owners, game2.owners)
-        estimated_overlap = int(smaller_audience * overlap_factor)
-        
-        # Addressable market (people who own one but not the other)
-        addressable_for_game1 = game2.owners - estimated_overlap
-        addressable_for_game2 = game1.owners - estimated_overlap
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric(
-                "Estimated Overlap",
-                f"{estimated_overlap:,}",
-                help=f"Users estimated to own both games (~{overlap_factor*100:.1f}% of smaller audience)"
-            )
-        
-        with col2:
-            st.metric(
-                f"Addressable from {game1.name}",
-                f"{addressable_for_game1:,}",
-                help=f"Users who own {game1.name} but not {game2.name}"
-            )
-        
-        with col3:
-            st.metric(
-                f"Addressable from {game2.name}",
-                f"{addressable_for_game2:,}",
-                help=f"Users who own {game2.name} but not {game1.name}"
-            )
-        
-        # Visualization
-        st.markdown("### 📊 Overlap Visualization")
-        
-        # Create a simple overlap visualization
-        fig = go.Figure()
-        
-        # Create overlapping circles representation
-        fig.add_trace(go.Bar(
-            x=[game1.name, 'Overlap', game2.name],
-            y=[addressable_for_game2, estimated_overlap, addressable_for_game1],
-            marker_color=['#636EFA', '#EF553B', '#00CC96'],
-            text=[f"{addressable_for_game2:,}", f"{estimated_overlap:,}", f"{addressable_for_game1:,}"],
-            textposition='auto',
-        ))
-        
-        fig.update_layout(
-            title="Audience Distribution",
-            xaxis_title="Segment",
-            yaxis_title="Estimated Owners",
-            showlegend=False,
-            height=400
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Market insights
-        st.markdown("### 💡 Market Insights")
-        
-        total_combined = game1.owners + game2.owners - estimated_overlap
-        overlap_pct = (estimated_overlap / smaller_audience) * 100
-        
-        st.info(f"""
-        **Combined Addressable Market**: {total_combined:,} unique owners
-        
-        **Overlap Analysis**:
-        - {overlap_pct:.1f}% of {game1.name if game1.owners < game2.owners else game2.name} owners also own the other game
-        - If you create a game combining elements of both, you have a potential market of {total_combined:,} users
-        - {addressable_for_game1:,} users familiar with {game1.name} might be interested in content similar to {game2.name}
-        - {addressable_for_game2:,} users familiar with {game2.name} might be interested in content similar to {game1.name}
-        """)
-        
-    else:
-        # Multi-game comparison
-        st.markdown(f"### 🔄 Multi-Game Overlap ({len(selected_games)} Games)")
-        
-        st.info(
-            "💡 Multi-game overlap analysis estimates the intersection of audiences "
-            "across multiple games. The more games you add, the smaller the overlap typically becomes."
-        )
-        
-        # Calculate pairwise overlaps
-        st.markdown("#### Pairwise Overlap Estimates")
-        
-        overlap_data = []
-        for i in range(len(selected_games)):
-            for j in range(i + 1, len(selected_games)):
-                g1 = selected_games[i]
-                g2 = selected_games[j]
-                overlap_factor = calculate_overlap_factor(g1.id, g2.id)
-                smaller = min(g1.owners, g2.owners)
-                overlap = int(smaller * overlap_factor)
-                
-                overlap_data.append({
-                    'Game A': g1.name,
-                    'Game B': g2.name,
-                    'Estimated Overlap': overlap,
-                    'Overlap %': f"{overlap_factor*100:.1f}%"
-                })
-        
-        df_overlap = pd.DataFrame(overlap_data)
-        st.dataframe(df_overlap, use_container_width=True)
-        
-        # Total unique audience
-        st.markdown("#### Combined Market Analysis")
-        
-        # Conservative estimate: assume some overlap between all games
-        total_owners = sum(g.owners for g in selected_games)
-        # Assume average 20% overlap reduction for multi-game scenario
-        avg_overlap_reduction = 0.20
-        estimated_unique = int(total_owners * (1 - avg_overlap_reduction))
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Total Owners (Sum)", f"{total_owners:,}")
-        with col2:
-            st.metric(
-                "Est. Unique Owners", 
-                f"{estimated_unique:,}",
-                help="Estimated unique owners accounting for overlap"
-            )
-        
-        st.info(f"""
-        **Market Opportunity**: Creating a game that combines elements from these {len(selected_games)} games 
-        could address an estimated market of **{estimated_unique:,}** unique users.
-        """)
-    
-    # Additional insights
-    st.markdown("---")
-    st.markdown("### ℹ️ About This Analysis")
-    st.caption("""
-    **Methodology**: This analysis estimates ownership overlap based on genre similarity and market data. 
-    Actual overlap may vary based on factors like:
-    - Player preferences and gaming habits
-    - Game popularity and release timing  
-    - Marketing and discoverability
-    - Genre and gameplay mechanics
-    
-    **Note**: These are estimates based on available data. For precise market research, 
-    consider conducting user surveys or accessing detailed analytics platforms.
-    """)
-    
-    db.close()
-
-
-def show_data_management():
-    """Show enhanced data management page."""
-    st.header("📥 Data Management & Export")
-    
-    # Create tabs for different management features
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Import Single", "📦 Bulk Import", "📤 Export Data", "📈 Database Stats"
-    ])
-    
-    with tab1:
-        st.markdown("### Import Single Game")
-        st.write("Import individual games by Steam App ID.")
-        
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            app_id = st.number_input(
-                "Enter Steam App ID:",
-                min_value=1,
-                step=1,
-                help="You can find the App ID in the Steam store URL (e.g., 730 for CS2)",
-                key="single_import_id"
-            )
-        
-        with col2:
-            import_stats = st.checkbox("Import player stats", value=True, key="import_stats_checkbox")
-        
-        if st.button("🚀 Import Game", key="import_single_btn"):
-            with st.spinner(f"Importing game {app_id}..."):
-                db = get_session()
-                importer = GameDataImporter(db)
-                
-                try:
-                    game = importer.import_game(app_id)
-                    if game:
-                        st.success(f"✅ Successfully imported: **{game.name}**")
-                        
-                        # Display game info
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Developer", game.developer or "Unknown")
-                        with col2:
-                            st.metric("Genres", len(game.genres))
-                        with col3:
-                            platforms = []
-                            if game.windows: platforms.append("🪟")
-                            if game.mac: platforms.append("🍎")
-                            if game.linux: platforms.append("🐧")
-                            st.metric("Platforms", " ".join(platforms))
-                        
-                        # Import player stats if requested
-                        if import_stats:
-                            with st.spinner("Fetching player statistics..."):
-                                stats = importer.update_player_stats(app_id)
-                                if stats:
-                                    st.info(f"📊 Current players: **{stats.current_players:,}**")
-                                else:
-                                    st.warning("Could not fetch player statistics")
-                    else:
-                        st.error("❌ Failed to import game. Check the App ID and try again.")
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
-                finally:
-                    db.close()
-        
-        st.markdown("---")
-        
-        # Quick import popular games
-        st.markdown("### 🎮 Quick Import - Popular Games")
-        
-        popular_games = [
-            ("Counter-Strike 2", 730),
-            ("Dota 2", 570),
-            ("Team Fortress 2", 440),
-            ("Rust", 252490),
-            ("Apex Legends", 1172470),
-            ("GTA V", 271590),
-            ("PUBG", 578080),
-            ("Stardew Valley", 413150),
-        ]
-        
-        cols = st.columns(4)
-        for idx, (name, appid) in enumerate(popular_games):
-            with cols[idx % 4]:
-                if st.button(name, key=f"popular_{appid}", use_container_width=True):
-                    with st.spinner(f"Importing {name}..."):
-                        db = get_session()
-                        importer = GameDataImporter(db)
-                        
-                        try:
-                            game = importer.import_game(appid)
-                            if game:
-                                st.success(f"✅ {game.name}")
-                                # Update stats in background
-                                importer.update_player_stats(appid)
-                            else:
-                                st.error("❌ Failed")
-                        except Exception as e:
-                            st.error(f"❌ Error")
-                        finally:
-                            db.close()
-                            st.rerun()
-    
-    with tab2:
-        st.markdown("### 📦 Bulk Import Operations")
-        st.write("Import multiple games at once.")
-        
-        # Import method selection
-        import_method = st.radio(
-            "Select import method:",
-            ["Top 50 Popular Games", "Custom List", "By Genre"],
-            horizontal=True
-        )
-        
-        if import_method == "Top 50 Popular Games":
-            st.info("💡 This will import the top 50 most popular Steam games.")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                num_games = st.slider("Number of games:", 10, 50, 25, 5)
-            with col2:
-                import_delay = st.slider("Delay (seconds):", 0.5, 5.0, 1.0, 0.5)
-            
-            if st.button("🚀 Start Bulk Import", key="bulk_import_top50"):
-                from src.utils.bulk_import import BulkImporter
-                
-                db = get_session()
-                bulk_importer = BulkImporter(db)
-                
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                try:
-                    status_text.text("Starting bulk import...")
-                    results = bulk_importer.import_top_games(limit=num_games, delay=import_delay)
-                    progress_bar.progress(100)
-                    
-                    # Show results
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("✅ Success", len(results['success']))
-                    with col2:
-                        st.metric("⏭️ Skipped", len(results['skipped']))
-                    with col3:
-                        st.metric("❌ Failed", len(results['failed']))
-                    
-                    # Show report
-                    with st.expander("📄 View Detailed Report"):
-                        st.text(bulk_importer.get_import_report())
-                    
-                    st.success("Bulk import completed!")
-                    
-                except Exception as e:
-                    st.error(f"Error during bulk import: {str(e)}")
-                finally:
-                    db.close()
-        
-        elif import_method == "Custom List":
-            st.info("💡 Enter a comma-separated list of Steam App IDs.")
-            
-            app_ids_input = st.text_area(
-                "App IDs (comma-separated):",
-                placeholder="730, 570, 440, 252490",
-                help="Example: 730, 570, 440"
-            )
-            
-            import_delay = st.slider("Delay (seconds):", 0.5, 5.0, 1.0, 0.5, key="custom_delay")
-            
-            if st.button("🚀 Import Custom List", key="bulk_import_custom"):
-                if app_ids_input:
-                    try:
-                        # Parse app IDs
-                        app_ids = [int(x.strip()) for x in app_ids_input.split(',') if x.strip()]
-                        
-                        if not app_ids:
-                            st.error("No valid App IDs found")
-                        else:
-                            from src.utils.bulk_import import BulkImporter
-                            
-                            db = get_session()
-                            bulk_importer = BulkImporter(db)
-                            
-                            progress_bar = st.progress(0)
-                            status_text = st.empty()
-                            
-                            try:
-                                status_text.text(f"Importing {len(app_ids)} games...")
-                                results = bulk_importer.import_games_batch(
-                                    app_ids,
-                                    delay=import_delay,
-                                    update_stats=True
-                                )
-                                progress_bar.progress(100)
-                                
-                                # Show results
-                                col1, col2, col3 = st.columns(3)
-                                with col1:
-                                    st.metric("✅ Success", len(results['success']))
-                                with col2:
-                                    st.metric("⏭️ Skipped", len(results['skipped']))
-                                with col3:
-                                    st.metric("❌ Failed", len(results['failed']))
-                                
-                                st.success("Import completed!")
-                                
-                            finally:
-                                db.close()
-                    
-                    except ValueError:
-                        st.error("Invalid input. Please enter comma-separated numbers.")
-                else:
-                    st.warning("Please enter some App IDs")
-    
-    with tab3:
-        st.markdown("### 📤 Export Data")
-        st.write("Export your data in various formats.")
-        
-        export_type = st.selectbox(
-            "Select data to export:",
-            ["Games Catalog", "Player Statistics", "Genre Analysis", "Market Report"]
-        )
-        
-        db = get_session()
-        
-        try:
-            from src.utils.data_export import DataExporter
-            exporter = DataExporter(db)
-            
-            if export_type == "Games Catalog":
-                st.markdown("#### 🎮 Export Games Catalog")
-                
-                # Filters
-                with st.expander("🔍 Filters (Optional)"):
-                    filter_genre = st.selectbox("Genre:", ["All"] + [
-                        g[0] for g in db.query(Genre.name).distinct().all()
-                    ])
-                    filter_developer = st.text_input("Developer contains:", "")
-                
-                export_format = st.radio("Format:", ["CSV", "JSON"], horizontal=True)
-                
-                if st.button("📥 Export Games", key="export_games"):
-                    filters = {}
-                    if filter_genre != "All":
-                        filters['genre'] = filter_genre
-                    if filter_developer:
-                        filters['developer'] = filter_developer
-                    
-                    with st.spinner("Preparing export..."):
-                        df = exporter.export_games_to_csv(filters)
-                        
-                        if not df.empty:
-                            if export_format == "CSV":
-                                csv = df.to_csv(index=False)
-                                st.download_button(
-                                    label="⬇️ Download CSV",
-                                    data=csv,
-                                    file_name=f"steam_games_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                    mime="text/csv"
-                                )
-                            else:
-                                json_str = df.to_json(orient='records', indent=2)
-                                st.download_button(
-                                    label="⬇️ Download JSON",
-                                    data=json_str,
-                                    file_name=f"steam_games_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                                    mime="application/json"
-                                )
-                            
-                            st.success(f"✅ Prepared {len(df)} games for export")
-                            st.dataframe(df.head(10), use_container_width=True)
-                        else:
-                            st.warning("No games found matching filters")
-            
-            elif export_type == "Player Statistics":
-                st.markdown("#### 📊 Export Player Statistics")
-                
-                # Date range
-                col1, col2 = st.columns(2)
-                with col1:
-                    start_date = st.date_input("Start Date:", value=None)
-                with col2:
-                    end_date = st.date_input("End Date:", value=None)
-                
-                if st.button("📥 Export Stats", key="export_stats"):
-                    with st.spinner("Preparing export..."):
-                        df = exporter.export_player_stats_to_csv(
-                            start_date=datetime.combine(start_date, datetime.min.time()) if start_date else None,
-                            end_date=datetime.combine(end_date, datetime.max.time()) if end_date else None
-                        )
-                        
-                        if not df.empty:
-                            csv = df.to_csv(index=False)
-                            st.download_button(
-                                label="⬇️ Download CSV",
-                                data=csv,
-                                file_name=f"player_stats_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                mime="text/csv"
-                            )
-                            st.success(f"✅ Prepared {len(df)} stat records for export")
-                            st.dataframe(df.head(10), use_container_width=True)
-                        else:
-                            st.warning("No stats found for selected period")
-            
-            elif export_type == "Genre Analysis":
-                st.markdown("#### 🎯 Export Genre Analysis")
-                
-                if st.button("📥 Export Genres", key="export_genres"):
-                    with st.spinner("Preparing export..."):
-                        json_data = exporter.export_genres_to_json()
-                        st.download_button(
-                            label="⬇️ Download JSON",
-                            data=json_data,
-                            file_name=f"genres_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                            mime="application/json"
-                        )
-                        st.success("✅ Genre data ready for export")
-                        st.json(json_data)
-        
-        finally:
-            db.close()
-    
-    with tab4:
-        st.markdown("### 📈 Database Statistics")
-        
-        db = get_session()
-        
-        try:
-            from src.utils.data_export import DataExporter
-            exporter = DataExporter(db)
-            stats = exporter.get_summary_statistics()
-            
-            # Display stats
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("🎮 Total Games", f"{stats['total_games']:,}")
-            with col2:
-                st.metric("🎯 Genres", f"{stats['total_genres']:,}")
-            with col3:
-                st.metric("📊 Player Stats", f"{stats['total_player_stats']:,}")
-            with col4:
-                st.metric("📈 Games w/ Stats", f"{stats['games_with_stats']:,}")
-            
-            st.markdown("---")
-            
-            # Date range info
-            if stats['date_range']['earliest'] and stats['date_range']['latest']:
-                st.markdown("#### 📅 Data Coverage")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.info(f"**Earliest Data:** {stats['date_range']['earliest'][0].strftime('%Y-%m-%d %H:%M')}")
-                with col2:
-                    st.info(f"**Latest Data:** {stats['date_range']['latest'][0].strftime('%Y-%m-%d %H:%M')}")
-            
-            # Database health
-            st.markdown("#### 🏥 Database Health")
-            
-            health_metrics = []
-            
-            # Check data completeness
-            if stats['total_games'] > 0:
-                completeness = (stats['games_with_stats'] / stats['total_games']) * 100
-                health_metrics.append(("Data Completeness", f"{completeness:.1f}%", "success" if completeness > 50 else "warning"))
-            
-            # Check recent activity
-            if stats['date_range']['latest']:
-                hours_since_update = (datetime.utcnow() - stats['date_range']['latest'][0]).total_seconds() / 3600
-                if hours_since_update < 24:
-                    health_metrics.append(("Recent Activity", "Active", "success"))
-                else:
-                    health_metrics.append(("Recent Activity", f"{int(hours_since_update)}h ago", "warning"))
-            
-            for metric_name, value, status in health_metrics:
-                if status == "success":
-                    st.success(f"✅ **{metric_name}:** {value}")
-                else:
-                    st.warning(f"⚠️ **{metric_name}:** {value}")
-            
-            # Cleanup actions
-            st.markdown("#### 🧹 Maintenance")
-            if st.button("🔄 Refresh All Player Stats"):
-                st.info("This feature updates stats for all games (can take a while)")
-                # Placeholder for future implementation
-                st.warning("Feature coming soon!")
-            
-        finally:
-            db.close()
+# ============================================================================
+# EXTRACTED FUNCTIONS - NOW IN MODULE FILES
+# ========================================================================
+# The following functions have been moved to separate module files:
+# - show_game_search, show_analytics, show_market_analysis,
+#   show_data_management -> postlaunch_pages.py
+# - show_genre_saturation, show_rising_trends,
+#   show_competition_calculator, show_market_positioning
+#   -> analysis_pages.py
 
 
 if __name__ == "__main__":
     main()
+

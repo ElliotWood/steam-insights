@@ -17,6 +17,7 @@ numpy==1.26.2
 beautifulsoup4==4.12.2
 requests==2.31.0
 lxml==4.9.3
+pytrends==4.9.2
 
 # Dashboard
 streamlit==1.28.2

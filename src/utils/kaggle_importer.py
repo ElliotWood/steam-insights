@@ -402,19 +402,25 @@ class KaggleDatasetImporter:
         
         # Import ownership estimates
         if 'owners' in data:
-            # SteamSpy returns ranges like "20000-50000"
-            owners_str = data['owners']
-            if '-' in str(owners_str):
+            # SteamSpy returns ranges like "100,000,000 .. 200,000,000"
+            owners_str = str(data['owners'])
+            if '..' in owners_str:
                 # Take average of range
+                parts = owners_str.split('..')
+                low = parts[0].replace(',', '').strip()
+                high = parts[1].replace(',', '').strip()
+                stats.estimated_owners = int((int(low) + int(high)) / 2)
+            elif '-' in owners_str:
+                # Alternative format "20000-50000"
                 low, high = owners_str.split('-')
                 stats.estimated_owners = int((int(low) + int(high)) / 2)
         
         # Import player counts
-        if 'players_forever' in data:
-            stats.peak_players = int(data['players_forever'])
-        
         if 'average_forever' in data:
-            stats.average_players = int(data['average_forever'])
+            stats.peak_players = int(data['average_forever'])
+        
+        if 'ccu' in data:
+            stats.current_players = int(data['ccu'])
         
         self.db.commit()
     

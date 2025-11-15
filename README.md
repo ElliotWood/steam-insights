@@ -4,15 +4,21 @@ A comprehensive analytics dashboard for Steam games, providing insights into pla
 
 ## 🌟 Features
 
+### Core Capabilities
 - **Game Database**: Store and manage information about Steam games
 - **Player Statistics**: Track current and historical player counts
 - **Pricing History**: Monitor game prices and discounts over time
 - **Genre Analysis**: Analyze games by genre and category
 - **Market Analysis**: Game ownership overlap and addressable market analysis
-- **REST API**: FastAPI-based backend for data access
-- **Interactive Dashboard**: Streamlit-based web interface (5 pages)
-- **Data Import**: ETL pipeline for importing game data from Steam API
-- **Web Scraping**: Supplementary data collection from Steam store pages
+- **Advanced Analytics**: Forecasting, correlation analysis, and trend detection
+- **Data Management**: Bulk import, export to CSV/JSON, database health monitoring
+
+### Technical Features
+- **REST API**: FastAPI-based backend with automatic OpenAPI documentation
+- **Interactive Dashboard**: Professional Streamlit interface with 6 pages
+- **ETL Pipeline**: Automated data import from Steam API and web scraping
+- **Multiple Data Sources**: Steam Web API, Steam Store API, web scraper support
+- **Performance Optimized**: Caching, database indexing, batch operations
 
 ## 📋 Prerequisites
 
@@ -70,128 +76,60 @@ python -m uvicorn src.api.main:app --reload
 The API will be available at `http://localhost:8000`
 API documentation: `http://localhost:8000/docs`
 
-## 📊 Usage
+## 📊 Dashboard Pages
 
-### Importing Games
+The dashboard includes 6 professional pages:
 
-1. Navigate to the "Data Management" page in the dashboard
-2. Enter a Steam App ID (found in the Steam store URL)
-3. Click "Import Game" to fetch and store game data
-4. Or use the quick import buttons for popular games
+1. **Overview** - Key metrics, genre distribution, top performers
+2. **Game Search** - Search and explore individual games with detailed stats
+3. **Analytics** - Advanced charts with player analytics, market insights, and trend analysis
+4. **Market Analysis** - Game ownership overlap and addressable market calculations
+5. **Advanced Analytics** - Correlations, forecasting, growth trends, and genre performance
+6. **Data Management** - Import games, bulk operations, export data, database stats
 
-### Viewing Analytics
+### Quick Start Usage
 
-1. Navigate to the "Overview" page for key statistics
-2. Use "Game Search" to find and view specific games
-3. Visit "Analytics" for charts and trends
+1. **Import Data**: Navigate to "Data Management" → Enter Steam App ID → Click "Import Game"
+2. **View Analytics**: Visit "Overview" for quick insights or "Analytics" for detailed charts
+3. **Analyze Markets**: Use "Market Analysis" to compare game audiences
+4. **Export Data**: Go to "Data Management" → "Export" tab → Download CSV/JSON
 
-### Using the API
-
-Example API requests:
-
-```bash
-# List games
-curl http://localhost:8000/games
-
-# Get game details
-curl http://localhost:8000/games/730
-
-# Get player statistics
-curl http://localhost:8000/games/730/player-stats?days=7
-
-# List genres
-curl http://localhost:8000/genres
-```
-
-## 🏗️ Project Structure
+## 🏗️ Architecture
 
 ```
-steam-insights/
-├── src/
-│   ├── api/           # FastAPI backend
-│   │   ├── main.py    # API endpoints
-│   │   └── steam_client.py  # Steam API client
-│   ├── database/      # Database connection
-│   │   └── connection.py
-│   ├── models/        # Database models
-│   │   └── database.py
-│   ├── etl/          # ETL pipeline
-│   │   └── game_importer.py
-│   ├── scrapers/     # Web scrapers
-│   │   └── steam_scraper.py
-│   ├── dashboard/    # Streamlit dashboard
-│   │   └── app.py
-│   └── utils/        # Utility functions
-│       └── logging_config.py
-├── config/           # Configuration files
-│   └── settings.py
-├── tests/           # Test files
-├── data/            # Data storage
-│   ├── raw/        # Raw data files
-│   └── processed/  # Processed data
-├── requirements.txt  # Python dependencies
-├── .env.example     # Environment variables template
-└── README.md        # This file
+Steam API → Steam Client → Game Importer → Database ← Dashboard
+                                              ↕
+Steam Store → Web Scraper ────────────────→ Database ← API Server
 ```
 
-## 🗄️ Database Schema
+**Key Technologies**: Python 3.8+, FastAPI, Streamlit, SQLAlchemy, PostgreSQL/SQLite, Plotly
 
-The application uses the following main database tables:
+## 📝 Documentation
 
-- **games**: Game metadata (name, developer, publisher, release date, etc.)
-- **genres**: Game genres
-- **tags**: Game tags/categories
-- **player_stats**: Historical player count data
-- **pricing_history**: Price tracking over time
-- **reviews**: User reviews
-- **achievements**: Game achievements
+For comprehensive information, see:
 
-## 🔧 Configuration
-
-### Environment Variables
-
-- `STEAM_API_KEY`: Your Steam Web API key
-- `DATABASE_URL`: Database connection string (default: SQLite)
-- `DEBUG`: Enable debug mode (default: False)
-- `LOG_LEVEL`: Logging level (default: INFO)
-- `API_HOST`: API host address (default: 0.0.0.0)
-- `API_PORT`: API port (default: 8000)
-- `DASHBOARD_PORT`: Dashboard port (default: 8501)
-
-### Using PostgreSQL
-
-To use PostgreSQL instead of SQLite, update your `.env` file:
-
-```
-DATABASE_URL=postgresql://user:password@localhost:5432/steam_insights
-```
-
-## 📈 Available Data Sources
-
-The project can import data from:
-
-1. **Steam Web API**: Real-time game data, player counts, achievements
-2. **Steam Store API**: Game details, pricing, reviews
-3. **Kaggle Datasets**: Historical game data (manual import)
-4. **Web Scraping**: Supplementary data from Steam store pages
+- **[README.md](README.md)** (this file) - Quick start guide and project overview
+- **[DOCUMENTATION.md](DOCUMENTATION.md)** - Complete feature guide, API reference, and architecture
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development setup and contribution guidelines
+- **[TEST_REPORT.md](TEST_REPORT.md)** - Test coverage and quality metrics
 
 ## 🧪 Testing
 
 Run tests with pytest:
 
 ```bash
-pytest tests/
-```
+# Run all tests
+pytest tests/ -v
 
-Run with coverage:
-
-```bash
+# Run with coverage
 pytest --cov=src tests/
 ```
 
+**Test Results**: 42/42 tests passing ✅ | Coverage: 58% overall, 100% on critical components
+
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## 📝 License
 

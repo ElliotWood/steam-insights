@@ -112,6 +112,10 @@ class PlayerStats(Base):
     current_players = Column(Integer)
     peak_players_24h = Column(Integer)
     
+    # Play time statistics (in minutes)
+    average_playtime_minutes = Column(Integer)
+    peak_playtime_minutes = Column(Integer)
+    
     # Estimates
     estimated_owners = Column(Integer)
     estimated_revenue = Column(Float)
@@ -152,3 +156,76 @@ class Achievement(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class GameEnrichment(Base):
+    """LLM-enriched game data model."""
+    __tablename__ = 'game_enrichments'
+
+    id = Column(Integer, primary_key=True)
+    game_id = Column(
+        Integer, ForeignKey('games.id'),
+        nullable=False, unique=True, index=True
+    )
+    
+    # LLM-extracted structured data (JSON stored as text)
+    mechanics = Column(Text)  # JSON list of game mechanics
+    themes = Column(Text)  # JSON list of themes
+    features = Column(Text)  # JSON list of features/functionality
+    
+    # Sentiment analysis
+    sentiment_score = Column(Float)  # -1.0 to 1.0
+    sentiment_summary = Column(Text)  # Brief summary of player feedback
+    
+    # Metadata
+    llm_model = Column(String(100))  # Which LLM was used
+    prompt_version = Column(String(50))  # Track prompt version for consistency
+    confidence_score = Column(Float)  # Overall confidence in extraction (0-1)
+    
+    processing_time_seconds = Column(Float)  # Time taken to process
+    processed_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Error tracking
+    error_message = Column(Text)  # If processing failed
+    retry_count = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class BatchProcessingJob(Base):
+    """Track batch processing jobs for LLM enrichment."""
+    __tablename__ = 'batch_processing_jobs'
+
+    id = Column(Integer, primary_key=True)
+    
+    # Job configuration
+    job_type = Column(String(50), nullable=False)  # 'llm_enrichment', etc.
+    total_items = Column(Integer, nullable=False)
+    processed_items = Column(Integer, default=0)
+    failed_items = Column(Integer, default=0)
+    
+    # Status tracking
+    # Status: 'pending', 'running', 'paused', 'completed', 'failed'
+    status = Column(String(20), nullable=False, index=True)
+    progress_percentage = Column(Float, default=0.0)
+    
+    # Timing
+    started_at = Column(DateTime)
+    paused_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    estimated_completion = Column(DateTime)
+    
+    # Configuration (JSON)
+    config = Column(Text)  # JSON with job-specific settings
+    
+    # Results summary
+    results_summary = Column(Text)  # JSON with statistics
+    error_log = Column(Text)  # JSON array of errors
+    
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
