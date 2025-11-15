@@ -53,112 +53,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for professional styling
-st.markdown("""
-<style>
-    /* Main styling */
-    .main {
-        background-color: #0e1117;
-    }
-    
-    /* Metric cards */
-    [data-testid="stMetricValue"] {
-        font-size: 28px;
-        font-weight: 600;
-    }
-    
-    /* Headers */
-    h1 {
-        color: #00d4ff;
-        font-weight: 700;
-        padding-bottom: 10px;
-        border-bottom: 2px solid #00d4ff;
-    }
-    
-    h2 {
-        color: #00d4ff;
-        font-weight: 600;
-        margin-top: 20px;
-    }
-    
-    h3 {
-        color: #4da6ff;
-    }
-    
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #161b22;
-    }
-    
-    /* Buttons */
-    .stButton button {
-        background-color: #00d4ff;
-        color: #0e1117;
-        font-weight: 600;
-        border-radius: 5px;
-        border: none;
-        transition: all 0.3s ease;
-    }
-    
-    .stButton button:hover {
-        background-color: #00a8cc;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0, 212, 255, 0.3);
-    }
-    
-    /* Cards/Containers */
-    .css-1r6slb0 {
-        background-color: #1a1f2e;
-        border-radius: 10px;
-        padding: 20px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    }
-    
-    /* Info boxes */
-    .stAlert {
-        background-color: #1a2332;
-        border-left: 4px solid #00d4ff;
-        border-radius: 5px;
-    }
-    
-    /* Dataframes */
-    .dataframe {
-        background-color: #1a1f2e;
-        color: #ffffff;
-    }
-    
-    /* Expander */
-    .streamlit-expanderHeader {
-        background-color: #1a2332;
-        border-radius: 5px;
-        font-weight: 600;
-    }
-    
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        background-color: #1a2332;
-        border-radius: 5px 5px 0 0;
-        padding: 10px 20px;
-        font-weight: 600;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background-color: #00d4ff;
-        color: #0e1117;
-    }
-    
-    /* Plotly charts */
-    .js-plotly-plot {
-        border-radius: 10px;
-        background-color: #1a1f2e;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # Initialize database
 init_db()
 
@@ -184,7 +78,7 @@ def main():
             "Where are you in development?",
             [
                 "💡 Concept & Research",
-                "🎨 Pre-Production & Validation", 
+                "🎨 Pre-Production & Validation",
                 "🔨 Production & Tracking",
                 "📢 Pre-Launch Marketing",
                 "🚀 Launch & Analytics",
@@ -203,7 +97,7 @@ def main():
                 [
                     "🌟 Market Opportunities",
                     "📊 Genre Analysis",
-                    "🔍 Game Search",
+                    "🎮 Game Explorer",
                     "📈 Google Trends",
                     "📊 Genre Saturation",
                     "🔥 Rising Trends"
@@ -348,7 +242,7 @@ def route_to_page(page: str, stage: str):
         show_market_opportunities()
     elif page == "📊 Genre Analysis":
         show_genre_analysis()
-    elif page == "🔍 Game Search":
+    elif page == "🎮 Game Explorer":
         show_game_search()
     elif page == "📈 Google Trends":
         show_google_trends()
@@ -693,6 +587,8 @@ def show_competition_analysis():
     
     db = get_session()
     from src.utils.market_insights import MarketInsightsAnalyzer
+    from src.models.database import Tag, Genre
+    from sqlalchemy import func
     analyzer = MarketInsightsAnalyzer(db)
     
     st.info(
@@ -701,11 +597,34 @@ def show_competition_analysis():
         "Target 'Easy' or 'Moderate' markets for best chances!"
     )
     
+    # Show available tags/genres
+    with st.expander("📋 View Available Tags & Genres", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Top Tags:**")
+            top_tags = db.query(Tag.name).join(Tag.games).group_by(Tag.name).order_by(
+                func.count().desc()
+            ).limit(15).all()
+            if top_tags:
+                st.write(", ".join([t[0] for t in top_tags]))
+            else:
+                st.write("No tags in database")
+        
+        with col2:
+            st.markdown("**Top Genres:**")
+            top_genres = db.query(Genre.name).join(Genre.games).group_by(Genre.name).order_by(
+                func.count().desc()
+            ).limit(15).all()
+            if top_genres:
+                st.write(", ".join([g[0] for g in top_genres]))
+            else:
+                st.write("No genres in database")
+    
     # Tag input
     tag_input = st.text_input(
-        "Enter your game tags (comma-separated)",
-        "Indie, Singleplayer, Adventure",
-        help="Tags that describe your game"
+        "Enter your game tags/genres (comma-separated)",
+        "Multi-player, Steam Achievements",
+        help="Use tags or genres from the list above"
     )
     
     if st.button("Calculate Competition", type="primary"):
@@ -741,17 +660,22 @@ def show_competition_analysis():
         
         # Show similar successful games
         st.subheader("🏆 Successful Games in This Space")
-        with st.spinner("Finding similar successful games..."):
-            similar = analyzer.find_similar_successful_games(tags)
-        
-        if similar:
-            for game in similar[:10]:
-                with st.expander(
-                    f"🎮 {game['name']} - {game['owners']:,} owners"
-                ):
-                    st.write(f"**Tags:** {', '.join(game['matching_tags'])}")
-                    st.write(f"**All Tags:** {', '.join(game['tags'])}")
-                    st.write(f"**Steam ID:** {game['steam_appid']}")
+        if result['total_games'] > 0:
+            with st.spinner("Finding similar successful games..."):
+                similar = analyzer.find_similar_successful_games(tags)
+            
+            if similar:
+                for game in similar[:10]:
+                    with st.expander(
+                        f"🎮 {game['name']} - {game['owners']:,} owners"
+                    ):
+                        st.write(f"**Tags:** {', '.join(game['matching_tags'])}")
+                        st.write(f"**All Tags:** {', '.join(game['tags'])}")
+                        st.write(f"**Steam ID:** {game['steam_appid']}")
+            else:
+                st.info("No successful games found with those exact tags. Try broader or different tags.")
+        else:
+            st.warning("⚠️ No games found matching those tags. Please check the available tags/genres above and try again.")
 
 
 def show_tag_strategy():
@@ -796,11 +720,39 @@ def show_pricing_strategy():
     
     db = get_session()
     from src.utils.market_insights import MarketInsightsAnalyzer
+    from src.models.database import PricingHistory
     analyzer = MarketInsightsAnalyzer(db)
     
+    # Check if we have pricing data
+    pricing_count = db.query(PricingHistory).filter(
+        PricingHistory.price_usd.isnot(None)
+    ).count()
+    
+    if pricing_count == 0:
+        st.warning(
+            "⚠️ **No Pricing Data Available**\n\n"
+            "The database doesn't contain pricing information yet. "
+            "Pricing data needs to be collected from the Steam API.\n\n"
+            "**To add pricing data:**\n"
+            "1. Go to 'Data Management' section\n"
+            "2. Import games from Steam API (includes pricing)\n"
+            "3. Or update existing games to fetch current prices"
+        )
+        
+        st.info(
+            "📊 **Price Recommendations (Industry Averages):**\n\n"
+            "• **Indie games:** $5-$20\n"
+            "• **Mid-tier:** $20-$40\n"
+            "• **AAA titles:** $40-$70\n\n"
+            "Lower prices can increase conversions but signal "
+            "lower quality. Price according to production value "
+            "and genre expectations!"
+        )
+        return
+    
     st.info(
-        "Price signals quality and affects conversion rates. "
-        "Find the sweet spot!"
+        f"Price signals quality and affects conversion rates. "
+        f"Analyzing {pricing_count:,} games with pricing data..."
     )
     
     with st.spinner("Analyzing pricing data..."):
@@ -814,6 +766,17 @@ def show_pricing_strategy():
         
         # Chart
         import plotly.express as px
+        
+        # Add avg_price column for scatter plot
+        df['avg_price'] = df['price_range'].map({
+            'Free-$5': 2.5,
+            '$5-$10': 7.5,
+            '$10-$15': 12.5,
+            '$15-$20': 17.5,
+            '$20-$30': 25,
+            '$30+': 40
+        })
+        
         fig = px.scatter(
             df,
             x='avg_price',
@@ -829,6 +792,11 @@ def show_pricing_strategy():
             }
         )
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning(
+            "Unable to generate pricing analysis. "
+            "Not enough data in price ranges."
+        )
 
 
 # ============================================================================

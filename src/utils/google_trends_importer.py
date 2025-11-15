@@ -52,7 +52,7 @@ class GoogleTrendsImporter:
                 cat=0,  # All categories
                 timeframe=timeframe,
                 geo='',  # Worldwide
-                gprop='web'  # Web search
+                gprop=''  # Web search (empty string for web)
             )
             
             # Get interest over time

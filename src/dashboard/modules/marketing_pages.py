@@ -48,13 +48,13 @@ def show_marketing_insights():
             import pandas as pd
             df = pd.DataFrame(results)
             
-            # Color code by opportunity
+            # Color code by opportunity (light theme)
             def highlight_opportunity(row):
                 if row['opportunity'] == 'High':
-                    return ['background-color: #1e3a1e'] * len(row)
+                    return ['background-color: #d4edda'] * len(row)
                 elif row['opportunity'] == 'Medium':
-                    return ['background-color: #3a3a1e'] * len(row)
-                return ['background-color: #3a1e1e'] * len(row)
+                    return ['background-color: #fff3cd'] * len(row)
+                return ['background-color: #f8d7da'] * len(row)
             
             st.dataframe(
                 df.style.apply(highlight_opportunity, axis=1),
@@ -228,13 +228,13 @@ def show_marketing_insights():
 
 def show_google_trends():
     """
-    Display Google Trends analysis for gaming keywords.
+    Display Google Trends analysis for gaming keywords with auto-loaded data.
     """
     import streamlit as st
     from src.utils.google_trends_importer import GoogleTrendsImporter
     
     st.header("📊 Google Trends Analysis")
-    st.markdown("Track search interest for gaming genres and keywords")
+    st.markdown("*Real-time search interest trends for gaming genres*")
     
     trends = GoogleTrendsImporter()
     
@@ -250,65 +250,91 @@ def show_google_trends():
                     st.error("❌ Installation failed. Try manually: pip install pytrends")
         return
     
-    analysis_type = st.selectbox(
-        "Choose Analysis",
-        ["Genre Trends", "Related Queries", "Keyword Comparison", "Regional Interest"]
-    )
+    # Auto-load default genre trends
+    default_genres = ["Action", "RPG", "Strategy", "Indie", "Adventure"]
+    default_timeframe = "today 12-m"
     
+    # Initialize defaults
+    analysis_type = "Genre Trends"
+    genre_list = default_genres
+    timeframe = default_timeframe
+    
+    # Customization in expandable section
+    with st.expander("🔧 Customize Analysis", expanded=False):
+        analysis_type = st.selectbox(
+            "Analysis Type",
+            ["Genre Trends", "Related Queries", "Keyword Comparison", "Regional Interest"],
+            key="trends_analysis_type"
+        )
+        
+        if analysis_type == "Genre Trends":
+            custom_genres = st.text_input(
+                "Custom genres (comma-separated, max 5)",
+                placeholder="roguelike, metroidvania, souls-like, platformer, rpg",
+                key="custom_genres"
+            )
+            custom_timeframe = st.selectbox(
+                "Timeframe",
+                ["today 3-m", "today 12-m", "today 5-y", "all"],
+                index=1,
+                key="custom_timeframe"
+            )
+            
+            if custom_genres:
+                genre_list = [g.strip() for g in custom_genres.split(',')][:5]
+                timeframe = custom_timeframe
+    
+    # Auto-fetch and display genre trends by default
     if analysis_type == "Genre Trends":
         st.subheader("📈 Genre Search Trends")
+        st.info(f"Showing trends for: {', '.join(genre_list)} (last 12 months)")
         
-        genres = st.text_input(
-            "Enter genres (comma-separated, max 5)",
-            placeholder="roguelike, metroidvania, souls-like, platformer, rpg"
-        )
+        with st.spinner("Fetching Google Trends data..."):
+            result = trends.get_genre_trends(genre_list, timeframe)
         
-        timeframe = st.selectbox(
-            "Timeframe",
-            ["today 3-m", "today 12-m", "today 5-y", "all"],
-            index=1
-        )
-        
-        if genres and st.button("Analyze"):
-            genre_list = [g.strip() for g in genres.split(',')][:5]
+        if 'error' in result:
+            st.error(f"Error: {result['error']}")
+            st.info("💡 Try different keywords or check your internet connection")
+        else:
+            import pandas as pd
+            import plotly.express as px
             
-            with st.spinner("Fetching Google Trends data..."):
-                result = trends.get_genre_trends(genre_list, timeframe)
+            # Create comparison table
+            data = []
+            for keyword, stats in result['data'].items():
+                data.append({
+                    'Genre': keyword,
+                    'Current': stats['current'],
+                    'Average': stats['avg'],
+                    'Peak': stats['peak'],
+                    'Trend': stats['trend'],
+                    '30-Day Change': stats.get('change_30d', 'N/A')
+                })
             
-            if 'error' in result:
-                st.error(f"Error: {result['error']}")
-            else:
-                import pandas as pd
-                
-                # Create comparison table
-                data = []
-                for keyword, stats in result['data'].items():
-                    data.append({
-                        'Genre': keyword,
-                        'Current': stats['current'],
-                        'Average': stats['avg'],
-                        'Peak': stats['peak'],
-                        'Trend': stats['trend'],
-                        '30-Day Change': stats.get('change_30d', 'N/A')
-                    })
-                
-                df = pd.DataFrame(data)
-                st.dataframe(df, use_container_width=True, hide_index=True)
-                
-                # Visualization
-                import plotly.graph_objects as go
-                fig = go.Figure()
-                for keyword in genre_list:
-                    if keyword in result['data']:
-                        stats = result['data'][keyword]
-                        fig.add_trace(go.Indicator(
-                            mode="gauge+number+delta",
-                            value=stats['current'],
-                            title={'text': keyword},
-                            delta={'reference': stats['avg']},
-                            domain={'x': [0, 1], 'y': [0, 1]}
-                        ))
-                st.plotly_chart(fig, use_container_width=True)
+            df = pd.DataFrame(data)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            
+            # Visualization - Bar chart showing current vs average
+            fig = px.bar(
+                df,
+                x='Genre',
+                y=['Current', 'Average', 'Peak'],
+                title='Search Interest Comparison',
+                barmode='group',
+                labels={'value': 'Search Interest', 'variable': 'Metric'},
+                color_discrete_map={
+                    'Current': '#1f77b4',
+                    'Average': '#ff7f0e',
+                    'Peak': '#2ca02c'
+                }
+            )
+            fig.update_layout(
+                xaxis_title="Genre",
+                yaxis_title="Search Interest (0-100)",
+                legend_title="Metrics",
+                hovermode='x unified'
+            )
+            st.plotly_chart(fig, use_container_width=True)
     
     elif analysis_type == "Related Queries":
         st.subheader("🔍 Related & Rising Searches")

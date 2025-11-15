@@ -1,0 +1,38 @@
+[theme]
+# Anthropic-inspired light theme
+base="light"
+primaryColor="#E07B3E"
+backgroundColor="#FAFAFA"
+secondaryBackgroundColor="#F0F2F5"
+textColor="#1F1F1F"
+linkColor="#1F1F1F"
+
+# Border styling
+borderColor="#D3D2CA"
+showWidgetBorder=true
+baseRadius="0.75rem"
+buttonRadius="full"
+
+# Font configuration
+font="sans serif"
+headingFontWeights=[600, 500, 500, 500, 500, 500]
+headingFontSizes=["3rem", "2rem"]
+
+# Code styling
+codeFont="monospace"
+codeFontSize="0.75rem"
+codeBackgroundColor="#F0F2F5"
+
+# Sidebar border
+showSidebarBorder=true
+
+# Chart colors
+chartCategoricalColors=["#0EA5E9", "#059669", "#FBBF24"]
+
+[theme.sidebar]
+backgroundColor="#F5F5F5"
+secondaryBackgroundColor="#F0F2F5"
+headingFontSizes=["1.6rem", "1.4rem", "1.2rem"]
+dataframeHeaderBackgroundColor="#E4E4E0"
+
+

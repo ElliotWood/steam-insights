@@ -22,88 +22,179 @@ def get_session():
 
 
 def show_game_search():
-    """Show game search and details page."""
-    st.header("Game Search")
+    """Show game explorer board with browsable games and optional search."""
+    st.header("🎮 Game Explorer")
+    st.markdown("*Browse and discover games in the database*")
     
     db = get_session()
     
-    # Search input
-    search_term = st.text_input(
-        "Search for a game:", placeholder="Enter game name..."
-    )
+    # Get total count and available genres
+    total_games = db.query(Game).count()
+    all_genres = db.query(Genre).order_by(Genre.name).all()
+    genre_names = [g.name for g in all_genres]
+    
+    # Filters in sidebar/expander
+    with st.expander("🔍 Filter & Search Options", expanded=False):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            search_term = st.text_input(
+                "Search by name:",
+                placeholder="Enter game name (optional)...",
+                key="game_explorer_search"
+            )
+            
+            genre_filter = st.multiselect(
+                "Filter by genre:",
+                options=genre_names,
+                key="game_explorer_genre"
+            )
+        
+        with col2:
+            platform_filter = st.multiselect(
+                "Filter by platform:",
+                options=["Windows", "Mac", "Linux"],
+                key="game_explorer_platform"
+            )
+            
+            sort_by = st.selectbox(
+                "Sort by:",
+                options=[
+                    "Most Popular (Owners)",
+                    "Recently Released",
+                    "Name (A-Z)",
+                    "Name (Z-A)"
+                ],
+                key="game_explorer_sort"
+            )
+    
+    # Build query with filters
+    query = db.query(Game).join(PlayerStats)
     
     if search_term:
-        games = db.query(Game).filter(
-            Game.name.ilike(f"%{search_term}%")
-        ).limit(20).all()
-        
-        if games:
-            st.write(f"Found {len(games)} game(s)")
+        query = query.filter(Game.name.ilike(f"%{search_term}%"))
+    
+    if genre_filter:
+        query = query.join(Game.genres).filter(Genre.name.in_(genre_filter))
+    
+    if platform_filter:
+        for platform in platform_filter:
+            if platform == "Windows":
+                query = query.filter(Game.windows == True)
+            elif platform == "Mac":
+                query = query.filter(Game.mac == True)
+            elif platform == "Linux":
+                query = query.filter(Game.linux == True)
+    
+    # Apply sorting
+    if sort_by == "Most Popular (Owners)":
+        query = query.order_by(PlayerStats.estimated_owners.desc())
+    elif sort_by == "Recently Released":
+        query = query.order_by(Game.release_date.desc())
+    elif sort_by == "Name (A-Z)":
+        query = query.order_by(Game.name.asc())
+    elif sort_by == "Name (Z-A)":
+        query = query.order_by(Game.name.desc())
+    
+    # Get results with limit
+    games = query.limit(50).all()
+    
+    # Display summary
+    filter_info = []
+    if search_term:
+        filter_info.append(f"name: '{search_term}'")
+    if genre_filter:
+        filter_info.append(f"genres: {', '.join(genre_filter)}")
+    if platform_filter:
+        filter_info.append(f"platforms: {', '.join(platform_filter)}")
+    
+    if filter_info:
+        st.info(f"📊 Showing {len(games)} games (filtered by {'; '.join(filter_info)})")
+    else:
+        st.info(f"📊 Showing top {len(games)} games from {total_games:,} total games")
+    
+    if games:
+        # Display games in expandable cards
+        for game in games:
+            # Get player stats for this game
+            latest_stats = db.query(PlayerStats).filter(
+                PlayerStats.game_id == game.id
+            ).order_by(PlayerStats.timestamp.desc()).first()
             
-            # Display games
-            for game in games:
-                with st.expander(f"🎮 {game.name}"):
-                    col1, col2 = st.columns([2, 1])
+            # Build card header with key metrics
+            owners_text = f"{latest_stats.estimated_owners:,}" if latest_stats and latest_stats.estimated_owners else "N/A"
+            
+            with st.expander(f"🎮 {game.name} | 👥 {owners_text} owners"):
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    dev_text = game.developer or 'Unknown'
+                    st.write(f"**Developer:** {dev_text}")
+                    pub_text = game.publisher or 'Unknown'
+                    st.write(f"**Publisher:** {pub_text}")
+                    release = game.release_date
+                    date_text = (
+                        release.strftime('%Y-%m-%d')
+                        if release else 'N/A'
+                    )
+                    st.write(f"**Release Date:** {date_text}")
+                    st.write(f"**Steam App ID:** {game.steam_appid}")
                     
-                    with col1:
-                        dev_text = game.developer or 'Unknown'
-                        st.write(f"**Developer:** {dev_text}")
-                        pub_text = game.publisher or 'Unknown'
-                        st.write(f"**Publisher:** {pub_text}")
-                        release = game.release_date
-                        date_text = (
-                            release.strftime('%Y-%m-%d')
-                            if release else 'N/A'
-                        )
-                        st.write(f"**Release Date:** {date_text}")
-                        st.write(f"**Steam App ID:** {game.steam_appid}")
-                        
-                        if game.short_description:
-                            st.write("**Description:**")
-                            st.write(game.short_description)
-                        
-                        if game.genres:
-                            genres = [g.name for g in game.genres]
-                            st.write(f"**Genres:** {', '.join(genres)}")
+                    if latest_stats:
+                        st.write(f"**Estimated Owners:** {latest_stats.estimated_owners:,}")
+                        if latest_stats.peak_players_24h:
+                            st.write(f"**Peak Players (24h):** {latest_stats.peak_players_24h:,}")
                     
-                    with col2:
-                        if game.header_image:
-                            st.image(game.header_image)
-                        
-                        # Platform badges
-                        platforms = []
-                        if game.windows:
-                            platforms.append("🪟 Windows")
-                        if game.mac:
-                            platforms.append("🍎 Mac")
-                        if game.linux:
-                            platforms.append("🐧 Linux")
-                        
-                        if platforms:
-                            st.write("**Platforms:**")
-                            for platform in platforms:
-                                st.write(platform)
+                    if game.short_description:
+                        st.write("**Description:**")
+                        st.write(game.short_description)
                     
-                    # Player stats chart
-                    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-                    stats = db.query(PlayerStats).filter(
-                        PlayerStats.game_id == game.id,
-                        PlayerStats.timestamp >= cutoff
-                    ).order_by(PlayerStats.timestamp).all()
+                    if game.genres:
+                        genres = [g.name for g in game.genres]
+                        st.write(f"**Genres:** {', '.join(genres)}")
                     
-                    if stats:
-                        st.write("**Player Count (Last 30 Days)**")
-                        df_stats = pd.DataFrame([
-                            {
-                                'Date': s.timestamp,
-                                'Players': s.current_players
-                            }
-                            for s in stats
-                        ])
-                        fig = px.line(df_stats, x='Date', y='Players')
-                        st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.warning(f"No games found matching '{search_term}'")
+                    if game.tags:
+                        tags = [t.name for t in game.tags[:10]]  # Show first 10 tags
+                        st.write(f"**Tags:** {', '.join(tags)}")
+                
+                with col2:
+                    if game.header_image:
+                        st.image(game.header_image)
+                    
+                    # Platform badges
+                    platforms = []
+                    if game.windows:
+                        platforms.append("🪟 Windows")
+                    if game.mac:
+                        platforms.append("🍎 Mac")
+                    if game.linux:
+                        platforms.append("🐧 Linux")
+                    
+                    if platforms:
+                        st.write("**Platforms:**")
+                        for platform in platforms:
+                            st.write(platform)
+                
+                # Player stats chart
+                cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+                stats = db.query(PlayerStats).filter(
+                    PlayerStats.game_id == game.id,
+                    PlayerStats.timestamp >= cutoff
+                ).order_by(PlayerStats.timestamp).all()
+                
+                if stats:
+                    st.write("**Player Count (Last 30 Days)**")
+                    df_stats = pd.DataFrame([
+                        {
+                            'Date': s.timestamp,
+                            'Players': s.current_players
+                        }
+                        for s in stats
+                    ])
+                    fig = px.line(df_stats, x='Date', y='Players')
+                    st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("⚠️ No games found with the selected filters. Try adjusting your criteria.")
     
     db.close()
 

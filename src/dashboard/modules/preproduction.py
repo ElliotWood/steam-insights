@@ -5,8 +5,10 @@ Preproduction & Pre-Launch stage pages.
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from sqlalchemy import func
 
 from src.database.connection import get_db
+from src.models.database import Game, Genre, PlayerStats
 
 
 def get_session():
@@ -69,22 +71,43 @@ def show_genre_trends():
     st.markdown("*Track what's hot and what's not*")
     
     db = get_session()
-    from src.utils.market_insights import MarketInsightsAnalyzer
-    analyzer = MarketInsightsAnalyzer(db)
     
     days = st.slider(
-        "Time window (days)",
-        7,
-        180,
-        90,
-        help="How far back to look for trends"
+        "Minimum games per genre",
+        5,
+        50,
+        10,
+        help="Filter genres with at least this many games"
     )
     
     with st.spinner("Analyzing genre momentum..."):
-        results = analyzer.find_rising_trends(days)
+        # Query genre performance metrics
+        results = db.query(
+            Genre.name,
+            func.count(Game.id).label('game_count'),
+            func.avg(PlayerStats.estimated_owners).label('avg_owners'),
+            func.max(PlayerStats.estimated_owners).label('max_owners'),
+            func.sum(PlayerStats.estimated_owners).label('total_owners')
+        ).join(Game.genres).join(
+            PlayerStats, Game.id == PlayerStats.game_id
+        ).filter(
+            PlayerStats.estimated_owners > 0
+        ).group_by(Genre.name).having(
+            func.count(Game.id) >= days
+        ).all()
     
     if results:
-        df = pd.DataFrame(results)
+        df = pd.DataFrame(
+            results,
+            columns=[
+                'genre', 'game_count', 'avg_owners',
+                'max_owners', 'total_owners'
+            ]
+        )
+        
+        # Calculate momentum score (avg success * game count)
+        df['momentum_score'] = df['avg_owners'] * df['game_count']
+        df = df.sort_values('momentum_score', ascending=False)
         
         st.dataframe(df, use_container_width=True, hide_index=True)
         
@@ -93,11 +116,14 @@ def show_genre_trends():
             df.head(15),
             x='genre',
             y='momentum_score',
-            title=f'Genre Momentum (Last {days} Days)',
+            title='Genre Momentum Score (Avg Owners × Game Count)',
             color='momentum_score',
-            color_continuous_scale='Viridis'
+            color_continuous_scale='Viridis',
+            labels={'momentum_score': 'Momentum Score', 'genre': 'Genre'}
         )
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning(f"No genres found with at least {days} games")
 
 
 def show_similar_games():
