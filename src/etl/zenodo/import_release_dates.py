@@ -15,8 +15,13 @@ DATABASE_URL = settings.database_url
 ZENODO_BASE = Path('data/zenodo_analysis/csv_data/steam_dataset_2025_csv')
 
 
-def import_release_dates():
-    """Import release dates from Zenodo applications.csv."""
+def import_release_dates(resume_from=None):
+    """
+    Import release dates from Zenodo applications.csv.
+    
+    Args:
+        resume_from: Steam AppID to resume from (for fault tolerance)
+    """
     print("=" * 70)
     print("IMPORTING RELEASE DATES")
     print("=" * 70)
@@ -61,32 +66,54 @@ def import_release_dates():
         
         # Filter to games needing updates
         df_update = df_valid[~df_valid['appid'].isin(has_dates)].copy()
+        
+        # Resume support
+        if resume_from:
+            df_update = df_update[df_update['appid'] >= resume_from].copy()
+            print(f"Resuming from AppID: {resume_from}")
+        
         print(f"Games to update: {len(df_update):,}")
         
         if len(df_update) > 0:
-            # Batch update
+            # Batch update with individual commits for fault tolerance
             print("\nUpdating release dates...")
-            batch_size = 1000
+            batch_size = 100
             total_updated = 0
+            last_appid = None
             
-            for i in range(0, len(df_update), batch_size):
-                batch = df_update.iloc[i:i + batch_size]
+            try:
+                for i in range(0, len(df_update), batch_size):
+                    batch = df_update.iloc[i:i + batch_size]
+                    
+                    for _, row in batch.iterrows():
+                        try:
+                            last_appid = int(row['appid'])
+                            conn.execute(text("""
+                                UPDATE games
+                                SET release_date = :date,
+                                    updated_at = :now
+                                WHERE steam_appid = :appid
+                            """), {
+                                'appid': last_appid,
+                                'date': row['parsed_date'].to_pydatetime(),
+                                'now': datetime.utcnow()
+                            })
+                            total_updated += 1
+                        except Exception as e:
+                            print(f"  Error updating {last_appid}: {e}")
+                            continue
+                    
+                    # Commit every batch
+                    conn.commit()
+                    
+                    if total_updated % 1000 == 0 and total_updated > 0:
+                        print(f"  Progress: {total_updated:,}/{len(df_update):,}...")
                 
-                for _, row in batch.iterrows():
-                    conn.execute(text("""
-                        UPDATE games
-                        SET release_date = :date,
-                            updated_at = :now
-                        WHERE steam_appid = :appid
-                    """), {
-                        'appid': int(row['appid']),
-                        'date': row['parsed_date'].to_pydatetime(),
-                        'now': datetime.utcnow()
-                    })
-                
-                total_updated += len(batch)
-                if i % 10000 == 0 and i > 0:
-                    print(f"  Progress: {total_updated:,}...")
+            except KeyboardInterrupt:
+                print(f"\n\nInterrupted at AppID {last_appid}")
+                print(f"Resume with: resume_from={last_appid}")
+                conn.commit()  # Save progress
+                return
             
             print(f"\nUpdated {total_updated:,} games")
         
@@ -107,4 +134,16 @@ def import_release_dates():
 
 
 if __name__ == '__main__':
-    import_release_dates()
+    import sys
+    
+    # Support resume from command line
+    resume_from = None
+    if len(sys.argv) > 1:
+        try:
+            resume_from = int(sys.argv[1])
+            print(f"Resuming from AppID: {resume_from}\n")
+        except ValueError:
+            print("Usage: python import_release_dates.py [resume_from_appid]")
+            sys.exit(1)
+    
+    import_release_dates(resume_from=resume_from)

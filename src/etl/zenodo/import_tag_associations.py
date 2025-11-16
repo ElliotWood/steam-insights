@@ -15,8 +15,13 @@ DATABASE_URL = settings.database_url
 ZENODO_BASE = Path('data/zenodo_analysis/csv_data/steam_dataset_2025_csv')
 
 
-def import_tag_associations_by_name():
-    """Import tag associations using name-based matching."""
+def import_tag_associations_by_name(resume_from=None):
+    """
+    Import tag associations using name-based matching.
+    
+    Args:
+        resume_from: Batch index to resume from (for fault tolerance)
+    """
     print("=" * 70)
     print("IMPORTING TAG ASSOCIATIONS (NAME-BASED)")
     print("=" * 70)
@@ -129,26 +134,44 @@ def import_tag_associations_by_name():
         print(f"New associations to insert: {len(new_assocs):,}")
         
         if len(new_assocs) > 0:
-            # Batch insert
+            # Batch insert with fault tolerance
             batch_size = 5000
             total_inserted = 0
+            start_batch = resume_from if resume_from else 0
+            
+            if start_batch > 0:
+                print(f"\nResuming from batch {start_batch}")
             
             print("\nInserting associations...")
-            for i in range(0, len(new_assocs), batch_size):
-                batch = new_assocs[i:i + batch_size]
-                
-                for assoc in batch:
-                    try:
-                        conn.execute(text("""
-                            INSERT INTO game_tags (steam_appid, tag_id)
-                            VALUES (:steam_appid, :tag_id)
-                        """), assoc)
-                    except Exception:
-                        pass  # Skip duplicates
-                
-                total_inserted += len(batch)
-                if i % 50000 == 0 and i > 0:
-                    print(f"  Progress: {total_inserted:,}...")
+            
+            try:
+                for i in range(start_batch, len(new_assocs), batch_size):
+                    batch = new_assocs[i:i + batch_size]
+                    batch_num = i // batch_size
+                    
+                    batch_inserted = 0
+                    for assoc in batch:
+                        try:
+                            conn.execute(text("""
+                                INSERT INTO game_tags (steam_appid, tag_id)
+                                VALUES (:steam_appid, :tag_id)
+                            """), assoc)
+                            batch_inserted += 1
+                        except Exception:
+                            pass  # Skip duplicates
+                    
+                    # Commit after each batch
+                    conn.commit()
+                    total_inserted += batch_inserted
+                    
+                    if total_inserted % 50000 == 0 and total_inserted > 0:
+                        print(f"  Progress: {total_inserted:,}...")
+                        
+            except KeyboardInterrupt:
+                print(f"\n\nInterrupted at batch {i // batch_size}")
+                print(f"Resume with: resume_from={i}")
+                conn.commit()
+                return
             
             print(f"\nInserted {total_inserted:,} new associations")
         
@@ -169,5 +192,19 @@ def import_tag_associations_by_name():
         print(f"Coverage: {final_coverage:.1f}%")
 
 
+
+
 if __name__ == '__main__':
-    import_tag_associations_by_name()
+    import sys
+    
+    # Support resume from command line
+    resume_from = None
+    if len(sys.argv) > 1:
+        try:
+            resume_from = int(sys.argv[1])
+            print(f"Resuming from batch: {resume_from}\n")
+        except ValueError:
+            print("Usage: python import_tag_associations.py [resume_batch]")
+            sys.exit(1)
+    
+    import_tag_associations_by_name(resume_from=resume_from)

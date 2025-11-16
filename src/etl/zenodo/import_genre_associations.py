@@ -5,8 +5,13 @@ from src.models.database import Game
 from sqlalchemy import text
 from datetime import datetime
 
-def import_genre_associations():
-    """Import genre associations from Zenodo dataset."""
+def import_genre_associations(resume_from=None):
+    """
+    Import genre associations from Zenodo dataset.
+    
+    Args:
+        resume_from: Batch index to resume from (for fault tolerance)
+    """
     
     # Load Zenodo genre associations
     print("=== Loading Zenodo Genre Associations ===")
@@ -67,32 +72,51 @@ def import_genre_associations():
             session.close()
             return
         
-        # Insert in batches
+        # Insert in batches with fault tolerance
         print("\n=== Inserting New Associations ===")
         batch_size = 5000
         total_inserted = 0
+        start_batch = resume_from if resume_from else 0
         
-        for i in range(0, len(new_associations), batch_size):
-            batch = new_associations[i:i + batch_size]
-            
-            # Build VALUES clause
-            values = ','.join(
-                f"({appid}, {genre_id})" 
-                for appid, genre_id in batch
-            )
-            
-            query = text(f"""
-                INSERT INTO game_genres (steam_appid, genre_id)
-                VALUES {values}
-                ON CONFLICT (steam_appid, genre_id) DO NOTHING
-            """)
-            
-            session.execute(query)
+        if start_batch > 0:
+            print(f"Resuming from batch {start_batch}")
+        
+        try:
+            for i in range(start_batch, len(new_associations), batch_size):
+                batch = new_associations[i:i + batch_size]
+                batch_num = i // batch_size
+                
+                # Build VALUES clause
+                values = ','.join(
+                    f"({appid}, {genre_id})" 
+                    for appid, genre_id in batch
+                )
+                
+                query = text(f"""
+                    INSERT INTO game_genres (steam_appid, genre_id)
+                    VALUES {values}
+                    ON CONFLICT (steam_appid, genre_id) DO NOTHING
+                """)
+                
+                try:
+                    session.execute(query)
+                    session.commit()
+                    total_inserted += len(batch)
+                    
+                    if total_inserted % 50000 == 0:
+                        print(f"Processed {total_inserted:,} associations...")
+                        
+                except Exception as e:
+                    print(f"Error in batch {batch_num}: {e}")
+                    session.rollback()
+                    continue
+                    
+        except KeyboardInterrupt:
+            print(f"\n\nInterrupted at batch {i // batch_size}")
+            print(f"Resume with: resume_from={i}")
             session.commit()
-            
-            total_inserted += len(batch)
-            if total_inserted % 50000 == 0:
-                print(f"Processed {total_inserted:,} associations...")
+            session.close()
+            return
 
 
         
@@ -122,7 +146,19 @@ def import_genre_associations():
         session.close()
 
 if __name__ == '__main__':
+    import sys
+    
+    # Support resume from command line
+    resume_from = None
+    if len(sys.argv) > 1:
+        try:
+            resume_from = int(sys.argv[1])
+            print(f"Resuming from batch: {resume_from}\n")
+        except ValueError:
+            print("Usage: python import_genre_associations.py [resume_batch]")
+            sys.exit(1)
+    
     start_time = datetime.now()
-    import_genre_associations()
+    import_genre_associations(resume_from=resume_from)
     duration = (datetime.now() - start_time).total_seconds()
     print(f"\nCompleted in {duration:.1f} seconds")
