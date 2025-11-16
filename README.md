@@ -130,6 +130,7 @@ Steam Store → Web Scraper ────────────────→ 
 For comprehensive information, see:
 
 - **[README.md](README.md)** (this file) - Quick start guide and project overview
+- **[FAQ.md](FAQ.md)** - Frequently asked questions about platform capabilities and features
 - **[DOCUMENTATION.md](DOCUMENTATION.md)** - Complete feature guide, API reference, and architecture
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development setup and contribution guidelines
 - **[TEST_REPORT.md](TEST_REPORT.md)** - Test coverage and quality metrics
