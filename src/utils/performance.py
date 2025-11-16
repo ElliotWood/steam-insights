@@ -165,12 +165,12 @@ class QueryOptimizer:
             Index('ix_games_release_date', Game.release_date)
             
             # PlayerStats indexes
-            Index('ix_playerstats_game_id', PlayerStats.game_id)
+            Index('ix_playerstats_steam_appid', PlayerStats.steam_appid)
             Index('ix_playerstats_timestamp', PlayerStats.timestamp)
-            Index('ix_playerstats_game_timestamp', PlayerStats.game_id, PlayerStats.timestamp)
+            Index('ix_playerstats_steam_timestamp', PlayerStats.steam_appid, PlayerStats.timestamp)
             
             # PricingHistory indexes
-            Index('ix_pricing_game_id', PricingHistory.game_id)
+            Index('ix_pricing_steam_appid', PricingHistory.steam_appid)
             Index('ix_pricing_timestamp', PricingHistory.timestamp)
             
             # Genre indexes
@@ -361,7 +361,9 @@ def precompute_aggregates(session: Session, force: bool = False):
     aggregates = {
         'total_games': session.query(Game).count(),
         'total_genres': session.query(Genre).count(),
-        'games_with_stats': session.query(PlayerStats.game_id).distinct().count(),
+        'games_with_stats': session.query(
+            PlayerStats.steam_appid
+        ).distinct().count(),
         'platform_counts': {
             'windows': session.query(Game).filter(Game.windows == True).count(),
             'mac': session.query(Game).filter(Game.mac == True).count(),

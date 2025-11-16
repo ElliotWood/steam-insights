@@ -135,16 +135,16 @@ async def get_game(app_id: int, db: Session = Depends(get_db)):
     
     # Get latest player stats
     latest_stats = db.query(PlayerStats).filter(
-        PlayerStats.game_id == game.id
+        PlayerStats.steam_appid == game.steam_appid
     ).order_by(desc(PlayerStats.timestamp)).first()
     
     # Get latest pricing
     latest_price = db.query(PricingHistory).filter(
-        PricingHistory.game_id == game.id
+        PricingHistory.steam_appid == game.steam_appid
     ).order_by(desc(PricingHistory.timestamp)).first()
     
     return GameDetailResponse(
-        id=game.id,
+        id=game.steam_appid,
         steam_appid=game.steam_appid,
         name=game.name,
         developer=game.developer,
@@ -184,7 +184,7 @@ async def get_player_stats(
     since = datetime.utcnow() - timedelta(days=days)
     
     stats = db.query(PlayerStats).filter(
-        PlayerStats.game_id == game.id,
+        PlayerStats.steam_appid == game.steam_appid,
         PlayerStats.timestamp >= since
     ).order_by(PlayerStats.timestamp).all()
     
@@ -233,7 +233,7 @@ async def get_trending_games(
     ).filter(
         PlayerStats.timestamp >= recent_date
     ).group_by(
-        Game.id
+        Game.steam_appid
     ).order_by(
         desc('max_players')
     ).limit(limit).all()

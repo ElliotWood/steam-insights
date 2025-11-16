@@ -55,8 +55,22 @@ logs/
 # Data files
 data/raw/*
 data/processed/*
+data/zenodo_analysis/*
+data/feedback/*
+data/steam_pages/*
+*.csv
+*.json.gz
+*.npy
+*.npz
+*.parquet
+*.feather
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/zenodo_analysis/.gitkeep
+!package.json
+!package-lock.json
+!tsconfig.json
+!MANIFEST.json
 
 # Jupyter Notebooks
 .ipynb_checkpoints

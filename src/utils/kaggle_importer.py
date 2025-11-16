@@ -390,12 +390,12 @@ class KaggleDatasetImporter:
         
         # Create or update player stats with ownership data
         stats = self.db.query(PlayerStats).filter(
-            PlayerStats.game_id == game.id
+            PlayerStats.steam_appid == game.steam_appid
         ).order_by(PlayerStats.timestamp.desc()).first()
         
         if not stats:
             stats = PlayerStats(
-                game_id=game.id,
+                steam_appid=game.steam_appid,
                 timestamp=datetime.now()
             )
             self.db.add(stats)

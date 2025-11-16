@@ -147,7 +147,9 @@ class DataExporter:
         Returns:
             JSON string with market report
         """
-        games = self.db.query(Game).filter(Game.id.in_(game_ids)).all()
+        games = self.db.query(Game).filter(
+            Game.steam_appid.in_(game_ids)
+        ).all()
         
         report = {
             'generated_at': datetime.utcnow().isoformat(),
@@ -162,7 +164,7 @@ class DataExporter:
         for game in games:
             # Get latest stats
             latest_stats = self.db.query(PlayerStats).filter(
-                PlayerStats.game_id == game.id
+                PlayerStats.steam_appid == game.steam_appid
             ).order_by(PlayerStats.timestamp.desc()).first()
             
             game_data = {

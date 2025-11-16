@@ -39,7 +39,7 @@ class AdvancedAnalytics:
         # Fetch data for each game
         game_data = {}
         for game_id in game_ids:
-            game = self.db.query(Game).filter(Game.id == game_id).first()
+            game = self.db.query(Game).filter(Game.steam_appid == game_id).first()
             if not game:
                 continue
             
@@ -47,7 +47,7 @@ class AdvancedAnalytics:
                 PlayerStats.timestamp,
                 PlayerStats.current_players
             ).filter(
-                PlayerStats.game_id == game_id,
+                PlayerStats.steam_appid == game_id,
                 PlayerStats.timestamp >= since,
                 PlayerStats.current_players.isnot(None)
             ).order_by(PlayerStats.timestamp).all()
@@ -103,7 +103,7 @@ class AdvancedAnalytics:
             PlayerStats.timestamp,
             PlayerStats.current_players
         ).filter(
-            PlayerStats.game_id == game_id,
+            PlayerStats.steam_appid == game_id,
             PlayerStats.timestamp >= since,
             PlayerStats.current_players.isnot(None)
         ).order_by(PlayerStats.timestamp).all()
@@ -198,14 +198,14 @@ class AdvancedAnalytics:
         # Get genres with stats
         genre_stats = self.db.query(
             Genre.name,
-            func.count(Game.id.distinct()).label('game_count'),
+            func.count(Game.steam_appid.distinct()).label('game_count'),
             func.avg(PlayerStats.current_players).label('avg_players'),
             func.max(PlayerStats.current_players).label('peak_players'),
             func.sum(PlayerStats.estimated_owners).label('total_owners')
         ).join(
             Genre.games
         ).outerjoin(
-            PlayerStats, Game.id == PlayerStats.game_id
+            PlayerStats, Game.steam_appid == PlayerStats.steam_appid
         ).group_by(
             Genre.name
         ).all()
@@ -247,7 +247,7 @@ class AdvancedAnalytics:
             PlayerStats.timestamp,
             PlayerStats.current_players
         ).filter(
-            PlayerStats.game_id == game_id,
+            PlayerStats.steam_appid == game_id,
             PlayerStats.timestamp >= since,
             PlayerStats.current_players.isnot(None)
         ).order_by(PlayerStats.timestamp).all()
@@ -278,7 +278,9 @@ class AdvancedAnalytics:
         else:
             trend = 'Stable'
         
-        game = self.db.query(Game).filter(Game.id == game_id).first()
+        game = self.db.query(Game).filter(
+            Game.steam_appid == game_id
+        ).first()
         
         return {
             'game_name': game.name if game else 'Unknown',
@@ -315,13 +317,15 @@ class AdvancedAnalytics:
         comparison_data = []
         
         for game_id in game_ids:
-            game = self.db.query(Game).filter(Game.id == game_id).first()
+            game = self.db.query(Game).filter(
+                Game.steam_appid == game_id
+            ).first()
             if not game:
                 continue
             
             # Get latest stats
             latest_stats = self.db.query(PlayerStats).filter(
-                PlayerStats.game_id == game_id
+                PlayerStats.steam_appid == game_id
             ).order_by(PlayerStats.timestamp.desc()).first()
             
             row = {

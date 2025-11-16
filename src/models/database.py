@@ -13,7 +13,7 @@ Base = declarative_base()
 game_genres = Table(
     'game_genres',
     Base.metadata,
-    Column('game_id', Integer, ForeignKey('games.id')),
+    Column('steam_appid', Integer, ForeignKey('games.steam_appid')),
     Column('genre_id', Integer, ForeignKey('genres.id'))
 )
 
@@ -21,7 +21,7 @@ game_genres = Table(
 game_tags = Table(
     'game_tags',
     Base.metadata,
-    Column('game_id', Integer, ForeignKey('games.id')),
+    Column('steam_appid', Integer, ForeignKey('games.steam_appid')),
     Column('tag_id', Integer, ForeignKey('tags.id'))
 )
 
@@ -30,8 +30,7 @@ class Game(Base):
     """Game model representing a Steam game."""
     __tablename__ = 'games'
 
-    id = Column(Integer, primary_key=True)
-    steam_appid = Column(Integer, unique=True, nullable=False, index=True)
+    steam_appid = Column(Integer, primary_key=True)
     name = Column(String(500), nullable=False, index=True)
     developer = Column(String(500))
     publisher = Column(String(500))
@@ -51,11 +50,36 @@ class Game(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    genres = relationship('Genre', secondary=game_genres, back_populates='games')
-    tags = relationship('Tag', secondary=game_tags, back_populates='games')
-    reviews = relationship('Review', back_populates='game', cascade='all, delete-orphan')
-    player_stats = relationship('PlayerStats', back_populates='game', cascade='all, delete-orphan')
-    pricing_history = relationship('PricingHistory', back_populates='game', cascade='all, delete-orphan')
+    genres = relationship(
+        'Genre',
+        secondary=game_genres,
+        back_populates='games',
+        primaryjoin='Game.steam_appid == game_genres.c.steam_appid'
+    )
+    tags = relationship(
+        'Tag',
+        secondary=game_tags,
+        back_populates='games',
+        primaryjoin='Game.steam_appid == game_tags.c.steam_appid'
+    )
+    reviews = relationship(
+        'Review',
+        back_populates='game',
+        cascade='all, delete-orphan',
+        foreign_keys='Review.steam_appid'
+    )
+    player_stats = relationship(
+        'PlayerStats',
+        back_populates='game',
+        cascade='all, delete-orphan',
+        foreign_keys='PlayerStats.steam_appid'
+    )
+    pricing_history = relationship(
+        'PricingHistory',
+        back_populates='game',
+        cascade='all, delete-orphan',
+        foreign_keys='PricingHistory.steam_appid'
+    )
 
 
 class Genre(Base):
@@ -67,7 +91,12 @@ class Genre(Base):
     description = Column(Text)
     
     # Relationships
-    games = relationship('Game', secondary=game_genres, back_populates='genres')
+    games = relationship(
+        'Game',
+        secondary=game_genres,
+        back_populates='genres',
+        secondaryjoin='Genre.id == game_genres.c.genre_id'
+    )
 
 
 class Tag(Base):
@@ -76,9 +105,16 @@ class Tag(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(100), unique=True, nullable=False)
+    is_user_tag = Column(Boolean, default=False)
+    vote_count = Column(Integer, default=0)
     
     # Relationships
-    games = relationship('Game', secondary=game_tags, back_populates='tags')
+    games = relationship(
+        'Game',
+        secondary=game_tags,
+        back_populates='tags',
+        secondaryjoin='Tag.id == game_tags.c.tag_id'
+    )
 
 
 class Review(Base):
@@ -86,7 +122,7 @@ class Review(Base):
     __tablename__ = 'reviews'
 
     id = Column(Integer, primary_key=True)
-    game_id = Column(Integer, ForeignKey('games.id'), nullable=False)
+    steam_appid = Column(Integer, ForeignKey('games.steam_appid'), nullable=False)
     steam_review_id = Column(String(100), unique=True)
     author = Column(String(200))
     review_text = Column(Text)
@@ -105,7 +141,7 @@ class PlayerStats(Base):
     __tablename__ = 'player_stats'
 
     id = Column(Integer, primary_key=True)
-    game_id = Column(Integer, ForeignKey('games.id'), nullable=False, index=True)
+    steam_appid = Column(Integer, ForeignKey('games.steam_appid'), nullable=False, index=True)
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     
     # Player counts
@@ -129,7 +165,7 @@ class PricingHistory(Base):
     __tablename__ = 'pricing_history'
 
     id = Column(Integer, primary_key=True)
-    game_id = Column(Integer, ForeignKey('games.id'), nullable=False, index=True)
+    steam_appid = Column(Integer, ForeignKey('games.steam_appid'), nullable=False, index=True)
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     
     # Pricing
@@ -147,7 +183,7 @@ class Achievement(Base):
     __tablename__ = 'achievements'
 
     id = Column(Integer, primary_key=True)
-    game_id = Column(Integer, ForeignKey('games.id'), nullable=False)
+    steam_appid = Column(Integer, ForeignKey('games.steam_appid'), nullable=False)
     name = Column(String(200), nullable=False)
     display_name = Column(String(200))
     description = Column(Text)
@@ -163,8 +199,8 @@ class GameEnrichment(Base):
     __tablename__ = 'game_enrichments'
 
     id = Column(Integer, primary_key=True)
-    game_id = Column(
-        Integer, ForeignKey('games.id'),
+    steam_appid = Column(
+        Integer, ForeignKey('games.steam_appid'),
         nullable=False, unique=True, index=True
     )
     

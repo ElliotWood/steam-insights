@@ -12,6 +12,65 @@ from src.database.connection import get_db
 from src.models.database import Game, Genre, PlayerStats, Tag
 
 
+@st.cache_data(ttl=3600)
+def get_genre_saturation_analysis():
+    """Cached genre saturation analysis."""
+    db = next(get_db())
+    from src.utils.market_insights import MarketInsightsAnalyzer
+    analyzer = MarketInsightsAnalyzer(db)
+    return analyzer.analyze_genre_saturation()
+
+
+@st.cache_data(ttl=3600)
+def get_genre_stats():
+    """Cached genre statistics."""
+    db = next(get_db())
+    results = db.query(
+        Genre.name,
+        func.count(Game.steam_appid).label('game_count'),
+        func.avg(PlayerStats.estimated_owners).label('avg_owners')
+    ).join(
+        Game.genres
+    ).outerjoin(
+        PlayerStats
+    ).group_by(
+        Genre.name
+    ).order_by(
+        func.count(Game.steam_appid).desc()
+    ).limit(30).all()
+    
+    return [{
+        'genre': r.name,
+        'game_count': r.game_count,
+        'avg_owners': int(r.avg_owners) if r.avg_owners else 0
+    } for r in results]
+
+
+@st.cache_data(ttl=3600)
+def get_tag_stats():
+    """Cached tag statistics."""
+    db = next(get_db())
+    results = db.query(
+        Tag.name,
+        func.count(Game.steam_appid).label('game_count'),
+        func.avg(PlayerStats.estimated_owners).label('avg_owners')
+    ).join(
+        Game.tags
+    ).outerjoin(
+        PlayerStats
+    ).group_by(
+        Tag.name
+    ).order_by(
+        func.count(Game.steam_appid).desc()
+    ).limit(30).all()
+    
+    return [{
+        'tag': r.name,
+        'game_count': r.game_count,
+        'avg_owners': int(r.avg_owners) if r.avg_owners else 0
+    } for r in results]
+
+
 def get_session():
     """Get database session."""
     return next(get_db())
@@ -22,14 +81,10 @@ def show_genre_saturation():
     st.header("📊 Genre Saturation Analysis")
     st.markdown("*Lower saturation = easier to stand out*")
     
-    db = get_session()
-    from src.utils.market_insights import MarketInsightsAnalyzer
-    analyzer = MarketInsightsAnalyzer(db)
-    
     st.info("Lower saturation = easier to stand out. Find underserved niches!")
     
     with st.spinner("Analyzing genres..."):
-        results = analyzer.analyze_genre_saturation()
+        results = get_genre_saturation_analysis()
     
     if results:
         df = pd.DataFrame(results)
@@ -62,16 +117,12 @@ def show_genre_saturation():
             }
         )
         st.plotly_chart(fig, use_container_width=True)
-    
-    db.close()
 
 
 def show_rising_trends():
     """Genre and tag performance analysis."""
     st.header("🔥 Genre Performance Analysis")
     st.markdown("*Discover high-performing genres and tags*")
-    
-    db = get_session()
     
     st.info(
         "Analyze genre and tag (sub-genre) performance based on "
@@ -81,7 +132,7 @@ def show_rising_trends():
     # Toggle between genres and tags
     analysis_type = st.radio(
         "Analyze by:",
-        ["Genres", "Tags (Sub-genres)", "Both"],
+        ["Genres", "Tags (Sub-genres)"],
         horizontal=True,
         key="performance_analysis_type"
     )
@@ -93,82 +144,44 @@ def show_rising_trends():
     )
     
     with st.spinner("Analyzing performance..."):
-        results_list = []
+        if analysis_type == "Genres":
+            results = get_genre_stats()
+            type_col = 'genre'
+        else:
+            results = get_tag_stats()
+            type_col = 'tag'
         
-        # Analyze Genres
-        if analysis_type in ["Genres", "Both"]:
-            genre_results = db.query(
-                Genre.name,
-                func.count(Game.id).label('game_count'),
-                func.avg(PlayerStats.estimated_owners).label('avg_owners'),
-                func.max(PlayerStats.estimated_owners).label('max_owners'),
-                func.sum(PlayerStats.estimated_owners).label('total_owners')
-            ).join(Game.genres).join(
-                PlayerStats, Game.id == PlayerStats.game_id
-            ).filter(
-                PlayerStats.estimated_owners > 0
-            ).group_by(Genre.name).having(
-                func.count(Game.id) >= min_games
-            ).all()
-            
-            for result in genre_results:
-                results_list.append({
-                    'Type': 'Genre',
-                    'Name': result[0],
-                    'Games': result[1],
-                    'Avg Owners': result[2],
-                    'Max Owners': result[3],
-                    'Total Owners': result[4]
-                })
-        
-        # Analyze Tags (Sub-genres)
-        if analysis_type in ["Tags (Sub-genres)", "Both"]:
-            tag_results = db.query(
-                Tag.name,
-                func.count(Game.id).label('game_count'),
-                func.avg(PlayerStats.estimated_owners).label('avg_owners'),
-                func.max(PlayerStats.estimated_owners).label('max_owners'),
-                func.sum(PlayerStats.estimated_owners).label('total_owners')
-            ).join(Tag.games).join(
-                PlayerStats, Game.id == PlayerStats.game_id
-            ).filter(
-                PlayerStats.estimated_owners > 0
-            ).group_by(Tag.name).having(
-                func.count(Game.id) >= min_games
-            ).all()
-            
-            for result in tag_results:
-                results_list.append({
-                    'Type': 'Tag',
-                    'Name': result[0],
-                    'Games': result[1],
-                    'Avg Owners': result[2],
-                    'Max Owners': result[3],
-                    'Total Owners': result[4]
-                })
+        # Filter by min games
+        df = pd.DataFrame(results)
+        df = df[df['game_count'] >= min_games]
     
-    if results_list:
-        df = pd.DataFrame(results_list)
-        
-        # Calculate momentum score (avg success * game count)
-        df['Momentum Score'] = df['Avg Owners'] * df['Games']
-        df = df.sort_values('Momentum Score', ascending=False)
-        
+    if not df.empty:
         # Format numbers
-        df['Avg Owners'] = df['Avg Owners'].apply(
+        df_display = df.copy()
+        df_display['avg_owners'] = df_display['avg_owners'].apply(
             lambda x: f"{int(x):,}"
         )
-        df['Max Owners'] = df['Max Owners'].apply(
-            lambda x: f"{int(x):,}"
-        )
-        df['Total Owners'] = df['Total Owners'].apply(
-            lambda x: f"{int(x):,}"
-        )
-        df['Momentum Score'] = df['Momentum Score'].apply(
+        df_display['game_count'] = df_display['game_count'].apply(
             lambda x: f"{int(x):,}"
         )
         
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
+        
+        # Export functionality
+        from src.utils.export_helpers import add_export_buttons
+        with st.expander("📥 Export Results"):
+            add_export_buttons(df, "genre_performance")
+        
+        # Visualization
+        fig = px.bar(
+            df.head(20),
+            x=type_col,
+            y='avg_owners',
+            color='game_count',
+            title=f'Top {analysis_type} by Average Owners',
+            labels={'avg_owners': 'Average Owners', type_col: analysis_type}
+        )
+        st.plotly_chart(fig, use_container_width=True)
         
         st.caption(
             f"📊 Showing {len(df)} categories with at least "
@@ -178,8 +191,6 @@ def show_rising_trends():
         st.warning(
             f"No categories found with at least {min_games} games"
         )
-    
-    db.close()
 
 
 def show_competition_calculator():
@@ -203,12 +214,12 @@ def show_competition_calculator():
     ).distinct().order_by(Genre.name).all()
     genre_list = [g[0] for g in available_genres]
     
-    # Get popular tags (top 50 by game count)
+    # Get popular tags (top 100 by game count)
     popular_tags = db.query(Tag.name).join(
         Tag.games
     ).group_by(Tag.name).order_by(
-        func.count(Game.id).desc()
-    ).limit(50).all()
+        func.count(Game.steam_appid).desc()
+    ).limit(100).all()
     tag_list = [t[0] for t in popular_tags]
     
     # Default selections for auto-loading
@@ -244,7 +255,7 @@ def show_competition_calculator():
     if selected_genres or selected_tags:
         with st.spinner("Calculating competition..."):
             # Build query for games matching genres and/or tags
-            query = db.query(func.count(func.distinct(Game.id)))
+            query = db.query(func.count(func.distinct(Game.steam_appid)))
             
             if selected_genres and selected_tags:
                 # Games with ANY selected genre AND ANY selected tag
@@ -328,21 +339,21 @@ def show_competition_calculator():
             ).join(Game.tags).filter(
                 Genre.name.in_(selected_genres),
                 Tag.name.in_(selected_tags),
-                PlayerStats.estimated_owners >= 50000
+                PlayerStats.estimated_owners.isnot(None)
             ).order_by(
                 PlayerStats.estimated_owners.desc()
             ).limit(10).all()
         elif selected_genres:
             top_games = top_games_query.join(Game.genres).filter(
                 Genre.name.in_(selected_genres),
-                PlayerStats.estimated_owners >= 50000
+                PlayerStats.estimated_owners.isnot(None)
             ).order_by(
                 PlayerStats.estimated_owners.desc()
             ).limit(10).all()
         else:
             top_games = top_games_query.join(Game.tags).filter(
                 Tag.name.in_(selected_tags),
-                PlayerStats.estimated_owners >= 50000
+                PlayerStats.estimated_owners.isnot(None)
             ).order_by(
                 PlayerStats.estimated_owners.desc()
             ).limit(10).all()
@@ -422,12 +433,12 @@ def show_market_positioning():
     ).distinct().order_by(Genre.name).all()
     genre_list = [g[0] for g in available_genres]
     
-    # Get popular tags
+    # Get popular tags (top 100)
     popular_tags = db.query(Tag.name).join(
         Tag.games
     ).group_by(Tag.name).order_by(
-        func.count(Game.id).desc()
-    ).limit(50).all()
+        func.count(Game.steam_appid).desc()
+    ).limit(100).all()
     tag_list = [t[0] for t in popular_tags]
     
     # Default selections

@@ -160,7 +160,7 @@ class GameDataImporter:
         
         # Create player stats entry
         stats = PlayerStats(
-            game_id=game.id,
+            steam_appid=game.steam_appid,
             timestamp=datetime.utcnow(),
             current_players=player_count
         )
@@ -201,7 +201,7 @@ class GameDataImporter:
         
         # Create pricing entry
         pricing = PricingHistory(
-            game_id=game.id,
+            steam_appid=game.steam_appid,
             timestamp=datetime.utcnow(),
             price_usd=price_info.get('initial', 0) / 100.0,  # Convert cents to dollars
             discount_percent=price_info.get('discount_percent', 0.0),

@@ -78,7 +78,7 @@ def show_marketing_insights():
         st.subheader("🎮 Winning Tag Combinations")
         st.info("Genre mashups that worked. Unique combos help you stand out!")
         
-        min_owners = st.slider("Minimum owners for 'successful'", 10000, 500000, 100000, 10000)
+        min_owners = st.number_input("Minimum owners for 'successful'", min_value=1000, value=100000, step=10000)
         
         with st.spinner("Finding successful combos..."):
             results = analyzer.find_tag_combinations(min_owners)

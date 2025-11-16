@@ -106,14 +106,14 @@ class BatchProcessor:
         if exclude_processed:
             # Get games without enrichment or with old enrichment
             processed_ids = self.db.query(
-                GameEnrichment.game_id
+                GameEnrichment.steam_appid
             ).filter(
                 GameEnrichment.error_message.is_(None)
             ).all()
             processed_ids = [id[0] for id in processed_ids]
             
             if processed_ids:
-                query = query.filter(~Game.id.in_(processed_ids))
+                query = query.filter(~Game.steam_appid.in_(processed_ids))
         
         # Prioritize games with more data
         query = query.filter(
@@ -131,7 +131,7 @@ class BatchProcessor:
         try:
             # Prepare game data
             game_data = {
-                'id': game.id,
+                'id': game.steam_appid,
                 'name': game.name,
                 'developer': game.developer,
                 'description': game.description,
@@ -143,7 +143,7 @@ class BatchProcessor:
             
             # Get reviews for sentiment analysis
             reviews = self.db.query(Review).filter(
-                Review.game_id == game.id
+                Review.steam_appid == game.steam_appid
             ).limit(50).all()
             
             reviews_data = [
@@ -169,7 +169,7 @@ class BatchProcessor:
             return enrichment_data
             
         except Exception as e:
-            logger.error(f"Error processing game {game.id}: {e}")
+            logger.error(f"Error processing game {game.steam_appid}: {e}")
             return {
                 'error_message': str(e),
                 'confidence_score': 0.0
@@ -177,12 +177,12 @@ class BatchProcessor:
     
     def save_enrichment(
         self,
-        game_id: int,
+        steam_appid: int,
         enrichment_data: Dict[str, Any]
     ):
         """Save or update game enrichment data."""
         existing = self.db.query(GameEnrichment).filter(
-            GameEnrichment.game_id == game_id
+            GameEnrichment.steam_appid == steam_appid
         ).first()
         
         if existing:
@@ -197,7 +197,7 @@ class BatchProcessor:
         else:
             # Create new
             enrichment = GameEnrichment(
-                game_id=game_id,
+                steam_appid=steam_appid,
                 mechanics=json.dumps(
                     enrichment_data.get('mechanics', [])
                 ),
@@ -259,12 +259,12 @@ class BatchProcessor:
                 try:
                     # Process game
                     enrichment_data = self.process_single_game(game)
-                    self.save_enrichment(game.id, enrichment_data)
+                    self.save_enrichment(game.steam_appid, enrichment_data)
                     
                     if enrichment_data.get('error_message'):
                         failed += 1
                         error_log.append({
-                            'game_id': game.id,
+                            'game_id': game.steam_appid,
                             'game_name': game.name,
                             'error': enrichment_data['error_message'],
                             'timestamp': datetime.now(timezone.utc).isoformat()
@@ -275,12 +275,12 @@ class BatchProcessor:
                 except Exception as e:
                     failed += 1
                     error_log.append({
-                        'game_id': game.id,
+                        'game_id': game.steam_appid,
                         'game_name': game.name,
                         'error': str(e),
                         'timestamp': datetime.now(timezone.utc).isoformat()
                     })
-                    logger.error(f"Failed to process game {game.id}: {e}")
+                    logger.error(f"Failed to process game {game.steam_appid}: {e}")
                 
                 # Update progress
                 total_processed = processed + failed

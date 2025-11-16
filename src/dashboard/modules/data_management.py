@@ -256,7 +256,7 @@ def show_market_analytics():
         
         games_by_year = db.query(
             extract('year', Game.release_date).label('year'),
-            func.count(Game.id).label('count')
+            func.count(Game.steam_appid).label('count')
         ).filter(
             Game.release_date.isnot(None)
         ).group_by('year').order_by('year').all()
@@ -348,12 +348,12 @@ def show_market_analytics():
         # Get genre stats
         genre_stats = db.query(
             Genre.name,
-            func.count(Game.id).label('supply'),
+            func.count(Game.steam_appid).label('supply'),
             func.avg(PlayerStats.estimated_owners).label('avg_demand')
         ).join(
             game_genres, Genre.id == game_genres.c.genre_id
         ).join(
-            Game, Game.id == game_genres.c.game_id
+            Game, Game.steam_appid == game_genres.c.steam_appid
         ).join(
             PlayerStats
         ).filter(

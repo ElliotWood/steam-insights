@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: steam-insights-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: steam_insights
+      POSTGRES_USER: steam_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-steaminsights2025}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      # Persist data between restarts
+      - postgres_data:/var/lib/postgresql/data
+      # Optional: Custom PostgreSQL config
+      - ./config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U steam_user -d steam_insights"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: 
+      - "postgres"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "work_mem=16MB"
+
+volumes:
+  # Named volume for data persistence
+  postgres_data:
+    driver: local
+
+networks:
+  default:
+    name: steam-insights-network

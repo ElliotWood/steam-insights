@@ -78,7 +78,7 @@ class MarketInsightsAnalyzer:
         """
         genre_stats = self.db.query(
             Genre.name,
-            func.count(Game.id).label('game_count'),
+            func.count(Game.steam_appid).label('game_count'),
             func.avg(PlayerStats.estimated_owners).label('avg_owners'),
             func.max(PlayerStats.estimated_owners).label('max_owners')
         ).join(Game.genres).join(PlayerStats).filter(
@@ -89,12 +89,14 @@ class MarketInsightsAnalyzer:
         results = []
         for genre_name, count, avg_owners, max_owners in genre_stats:
             # Calculate saturation score (higher = more saturated)
-            saturation = count / (avg_owners or 1)
+            # Convert Decimal to float to avoid type errors
+            avg_owners_f = float(avg_owners or 0)
+            saturation = float(count) / (avg_owners_f or 1)
             
             results.append({
                 'genre': genre_name,
-                'game_count': count,
-                'avg_owners': int(avg_owners or 0),
+                'game_count': int(count),
+                'avg_owners': int(avg_owners_f),
                 'max_owners': int(max_owners or 0),
                 'saturation_score': saturation,
                 'opportunity': (
@@ -243,7 +245,7 @@ class MarketInsightsAnalyzer:
         Key insight: Lower competition = easier to get noticed.
         """
         # Count games with these tags
-        total_games = self.db.query(func.count(Game.id)).join(
+        total_games = self.db.query(func.count(Game.steam_appid)).join(
             Game.tags
         ).filter(Tag.name.in_(tags)).scalar()
         
@@ -256,12 +258,14 @@ class MarketInsightsAnalyzer:
         ).scalar()
         
         # Competition index: more games with lower avg success = high competition
-        competition_score = total_games / (avg_owners or 1) * 100000
+        # Convert to float to avoid Decimal/float type errors
+        avg_owners_f = float(avg_owners or 0)
+        competition_score = float(total_games) / (avg_owners_f or 1) * 100000
         
         return {
             'tags': tags,
-            'total_games': total_games,
-            'avg_owners': int(avg_owners or 0),
+            'total_games': int(total_games),
+            'avg_owners': int(avg_owners_f),
             'competition_index': competition_score,
             'difficulty': 'Very Hard' if competition_score > 100 else 
                          'Hard' if competition_score > 50 else
@@ -386,14 +390,26 @@ class MarketInsightsAnalyzer:
         cutoff_date = datetime.now() - timedelta(days=lookback_days)
         
         # Count recent games (released in lookback period)
+        # Handle NULL release_date gracefully
         recent_game_case = case(
-            (Game.release_date >= cutoff_date, Game.id),
+            (
+                (Game.release_date.isnot(None)) &
+                (Game.release_date >= cutoff_date),
+                Game.steam_appid
+            ),
             else_=None
+        )
+
+        # Check if any games have release_date populated
+        has_dates = (
+            self.db.query(Game)
+            .filter(Game.release_date.isnot(None))
+            .first() is not None
         )
         
         genre_stats = self.db.query(
             Genre.name,
-            func.count(Game.id).label('total_games'),
+            func.count(Game.steam_appid).label('total_games'),
             func.count(func.distinct(recent_game_case)).label('recent_games'),
             func.avg(PlayerStats.estimated_owners).label('avg_owners')
         ).join(Game.genres).join(PlayerStats).filter(
@@ -404,34 +420,43 @@ class MarketInsightsAnalyzer:
         for genre_name, total, recent, avg_owners in genre_stats:
             if total > 0 and avg_owners:
                 # Golden Age Score: High success rate, low competition
+                # Convert Decimal to float to avoid type errors
+                avg_owners_f = float(avg_owners)
+                total_f = float(total)
+                recent_f = float(recent) if has_dates else total_f
+                
                 opportunity_score = (
-                    (avg_owners / total) * (recent / total * 100)
+                    (avg_owners_f / total_f) * (recent_f / total_f * 100)
                 )
                 
-                if recent >= min_recent_releases and total < max_total_games:
+                # If no release dates exist, skip the recent_releases filter
+                meets_recent_filter = (
+                    not has_dates or recent >= min_recent_releases
+                )
+                if meets_recent_filter and total < max_total_games:
                     opportunities.append({
                         'genre': genre_name,
                         'opportunity_score': round(opportunity_score, 2),
-                        'total_games': total,
-                        'recent_releases': recent,
-                        'avg_owners': int(avg_owners),
+                        'total_games': int(total),
+                        'recent_releases': int(recent),
+                        'avg_owners': int(avg_owners_f),
                         'competition_level': (
-                            'Low' if total < 100 else 
-                            'Medium' if total < 500 else 
+                            'Low' if total < 100 else
+                            'Medium' if total < 500 else
                             'High'
                         ),
                         'trend': (
-                            'Growing' if recent / total > 0.1 
+                            'Growing' if recent / total > 0.1
                             else 'Stable'
                         )
                     })
-        
+
         return sorted(
-            opportunities, 
-            key=lambda x: x['opportunity_score'], 
+            opportunities,
+            key=lambda x: x['opportunity_score'],
             reverse=True
         )[:15]
-    
+
     def calculate_demo_impact_potential(
         self, 
         current_wishlists: int
@@ -471,9 +496,9 @@ class MarketInsightsAnalyzer:
                 'Demo can provide 2-6x wishlist multiplier'
             ]
         }
-    
+
     def benchmark_against_tier(
-        self, 
+        self,
         wishlists: int,
         weekly_wishlists: int
     ) -> Dict:
@@ -493,7 +518,7 @@ class MarketInsightsAnalyzer:
             return 'below_bronze'
         
         wishlist_tier = get_tier(
-            wishlists, 
+            wishlists,
             BENCHMARK_TIERS['wishlist_at_launch']
         )
         
@@ -511,8 +536,8 @@ class MarketInsightsAnalyzer:
                 'tier': next_tier,
                 'wishlists_needed': gap,
                 'weeks_at_current_rate': (
-                    gap // weekly_wishlists 
-                    if weekly_wishlists > 0 
+                    gap // weekly_wishlists
+                    if weekly_wishlists > 0
                     else float('inf')
                 )
             }

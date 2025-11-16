@@ -84,16 +84,16 @@ def show_genre_trends():
         # Query genre performance metrics
         results = db.query(
             Genre.name,
-            func.count(Game.id).label('game_count'),
+            func.count(Game.steam_appid).label('game_count'),
             func.avg(PlayerStats.estimated_owners).label('avg_owners'),
             func.max(PlayerStats.estimated_owners).label('max_owners'),
             func.sum(PlayerStats.estimated_owners).label('total_owners')
         ).join(Game.genres).join(
-            PlayerStats, Game.id == PlayerStats.game_id
+            PlayerStats, Game.steam_appid == PlayerStats.steam_appid
         ).filter(
             PlayerStats.estimated_owners > 0
         ).group_by(Genre.name).having(
-            func.count(Game.id) >= days
+            func.count(Game.steam_appid) >= days
         ).all()
     
     if results:
@@ -224,7 +224,7 @@ def show_benchmark_game():
         total_wishlists = st.number_input(
             "Total wishlists",
             min_value=0,
-            max_value=500000,
+            max_value=None,
             value=5000,
             step=100
         )

@@ -96,8 +96,36 @@ def show_game_search():
     elif sort_by == "Name (Z-A)":
         query = query.order_by(Game.name.desc())
     
-    # Get results with limit
-    games = query.limit(50).all()
+    # Pagination controls
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        items_per_page = st.selectbox(
+            "Games per page",
+            options=[50, 100, 200, 500],
+            index=0,
+            key="game_browser_page_size"
+        )
+    
+    # Get total count for pagination
+    total_matching = query.count()
+    total_pages = (total_matching + items_per_page - 1) // items_per_page
+    
+    with col2:
+        if total_pages > 1:
+            page_number = st.number_input(
+                f"Page (1-{total_pages})",
+                min_value=1,
+                max_value=total_pages,
+                value=1,
+                key="game_browser_page"
+            )
+        else:
+            page_number = 1
+            st.info(f"Page 1 of 1")
+    
+    # Get results with pagination
+    offset = (page_number - 1) * items_per_page
+    games = query.offset(offset).limit(items_per_page).all()
     
     # Display summary
     filter_info = []
@@ -109,16 +137,16 @@ def show_game_search():
         filter_info.append(f"platforms: {', '.join(platform_filter)}")
     
     if filter_info:
-        st.info(f"📊 Showing {len(games)} games (filtered by {'; '.join(filter_info)})")
+        st.info(f"📊 Showing {len(games)} games on page {page_number} of {total_pages} ({total_matching:,} matching games, filtered by {'; '.join(filter_info)})")
     else:
-        st.info(f"📊 Showing top {len(games)} games from {total_games:,} total games")
+        st.info(f"📊 Showing {len(games)} games on page {page_number} of {total_pages} ({total_games:,} total games)")
     
     if games:
         # Display games in expandable cards
         for game in games:
             # Get player stats for this game
             latest_stats = db.query(PlayerStats).filter(
-                PlayerStats.game_id == game.id
+                PlayerStats.steam_appid == game.steam_appid
             ).order_by(PlayerStats.timestamp.desc()).first()
             
             # Build card header with key metrics
@@ -178,8 +206,9 @@ def show_game_search():
                 # Player stats chart
                 cutoff = datetime.now(timezone.utc) - timedelta(days=30)
                 stats = db.query(PlayerStats).filter(
-                    PlayerStats.game_id == game.id,
-                    PlayerStats.timestamp >= cutoff
+                    PlayerStats.steam_appid == game.steam_appid,
+                    PlayerStats.timestamp >= cutoff,
+                    PlayerStats.current_players.isnot(None)
                 ).order_by(PlayerStats.timestamp).all()
                 
                 if stats:
@@ -192,7 +221,11 @@ def show_game_search():
                         for s in stats
                     ])
                     fig = px.line(df_stats, x='Date', y='Players')
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(
+                        fig, 
+                        use_container_width=True,
+                        key=f"player_chart_{game.steam_appid}"
+                    )
     else:
         st.warning("⚠️ No games found with the selected filters. Try adjusting your criteria.")
     
@@ -246,14 +279,16 @@ def show_analytics():
     with tab1:
         st.markdown(f"#### Top Performing Games ({time_range})")
         
-        # Query for active games
+        # Query for active games by peak players
         query = db.query(
             Game.name,
-            func.max(PlayerStats.current_players).label('max_players'),
-            func.avg(PlayerStats.current_players).label('avg_players'),
+            func.max(PlayerStats.peak_players_24h).label('max_players'),
+            func.avg(PlayerStats.peak_players_24h).label('avg_players'),
             func.count(PlayerStats.id).label('data_points')
         ).join(PlayerStats).filter(
-            PlayerStats.timestamp >= since
+            PlayerStats.timestamp >= since,
+            PlayerStats.peak_players_24h.isnot(None),
+            PlayerStats.peak_players_24h > 0
         )
         
         # Apply genre filter if selected
@@ -263,7 +298,7 @@ def show_analytics():
             )
         
         active_games = query.group_by(Game.name).order_by(
-            func.max(PlayerStats.current_players).desc()
+            func.max(PlayerStats.peak_players_24h).desc()
         ).limit(15).all()
         
         if active_games:
@@ -278,11 +313,12 @@ def show_analytics():
                         'Avg Players', 'Data Points'
                     ]
                 )
+                # Handle None values before converting to int
                 df_active['Peak Players'] = (
-                    df_active['Peak Players'].astype(int)
+                    df_active['Peak Players'].fillna(0).astype(int)
                 )
                 df_active['Avg Players'] = (
-                    df_active['Avg Players'].astype(int)
+                    df_active['Avg Players'].fillna(0).astype(int)
                 )
                 
                 fig = go.Figure()
@@ -444,13 +480,13 @@ def show_analytics():
         st.markdown("##### Select games to visualize trends:")
         
         available_games = db.query(
-            Game.name, Game.id
+            Game.name, Game.steam_appid
         ).join(PlayerStats).group_by(
-            Game.name, Game.id
+            Game.name, Game.steam_appid
         ).limit(50).all()
         
         if available_games:
-            game_dict = {g.name: g.id for g in available_games}
+            game_dict = {g.name: g.steam_appid for g in available_games}
             default_games = (
                 list(game_dict.keys())[:3]
                 if len(game_dict) >= 3
@@ -473,8 +509,9 @@ def show_analytics():
                     PlayerStats.timestamp,
                     PlayerStats.current_players
                 ).join(PlayerStats).filter(
-                    Game.id.in_(selected_ids),
-                    PlayerStats.timestamp >= since
+                    Game.steam_appid.in_(selected_ids),
+                    PlayerStats.timestamp >= since,
+                    PlayerStats.current_players.isnot(None)
                 ).order_by(PlayerStats.timestamp).all()
                 
                 if trend_data:
@@ -571,7 +608,7 @@ def show_market_analysis():
     
     # Get all games with ownership data
     games_with_owners = db.query(
-        Game.id,
+        Game.steam_appid,
         Game.name,
         Game.steam_appid,
         func.max(PlayerStats.estimated_owners).label('owners')
@@ -579,7 +616,7 @@ def show_market_analysis():
         PlayerStats.estimated_owners.isnot(None),
         PlayerStats.estimated_owners > 0
     ).group_by(
-        Game.id, Game.name, Game.steam_appid
+        Game.steam_appid, Game.name, Game.steam_appid
     ).order_by(Game.name).all()
     
     if not games_with_owners or len(games_with_owners) < 2:
@@ -615,7 +652,7 @@ def show_market_analysis():
         # Filter out the first game from second selection
         game2_options = {
             k: v for k, v in game_options.items()
-            if v.id != game1.id
+            if v.steam_appid != game1.steam_appid
         }
         game2_name = st.selectbox(
             "Game B:",
@@ -630,7 +667,7 @@ def show_market_analysis():
         "➕ Add more games (optional):",
         options=[
             k for k, v in game_options.items()
-            if v.id not in [game1.id, game2.id]
+            if v.steam_appid not in [game1.steam_appid, game2.steam_appid]
         ],
         help="Select additional games to include in the analysis"
     )
@@ -648,8 +685,8 @@ def show_market_analysis():
     # Get genres for each game
     game_genres = {}
     for game in selected_games:
-        game_obj = db.query(Game).filter(Game.id == game.id).first()
-        game_genres[game.id] = [g.name for g in game_obj.genres]
+        game_obj = db.query(Game).filter(Game.steam_appid == game.steam_appid).first()
+        game_genres[game.steam_appid] = [g.name for g in game_obj.genres]
     
     # Calculate genre overlap score
     def calculate_overlap_factor(game1_id, game2_id):
@@ -685,8 +722,8 @@ def show_market_analysis():
                 f"{game.owners:,}",
                 help=f"Estimated owners for {game.name}"
             )
-            if game.id in game_genres and game_genres[game.id]:
-                genres_text = ', '.join(game_genres[game.id][:3])
+            if game.steam_appid in game_genres and game_genres[game.steam_appid]:
+                genres_text = ', '.join(game_genres[game.steam_appid][:3])
                 st.caption(f"Genres: {genres_text}")
     
     st.markdown("---")
@@ -695,7 +732,9 @@ def show_market_analysis():
     if len(selected_games) == 2:
         st.markdown("### 🔄 Ownership Overlap (2-Game Analysis)")
         
-        overlap_factor = calculate_overlap_factor(game1.id, game2.id)
+        overlap_factor = calculate_overlap_factor(
+            game1.steam_appid, game2.steam_appid
+        )
         
         # Estimate overlap
         smaller_audience = min(game1.owners, game2.owners)

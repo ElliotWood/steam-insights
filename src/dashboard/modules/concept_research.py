@@ -11,6 +11,31 @@ from src.database.connection import get_db
 from src.models.database import Game, PlayerStats
 
 
+@st.cache_data(ttl=3600)
+def get_golden_age_data(
+    min_owners, max_competition, min_recent, lookback_days
+):
+    """Cached golden age opportunities analysis."""
+    db = next(get_db())
+    from src.utils.market_insights import MarketInsightsAnalyzer
+    analyzer = MarketInsightsAnalyzer(db)
+    return analyzer.analyze_golden_age_opportunities(
+        min_owners=min_owners,
+        max_total_games=max_competition,
+        min_recent_releases=min_recent,
+        lookback_days=lookback_days
+    )
+
+
+@st.cache_data(ttl=3600)
+def get_genre_saturation_data():
+    """Cached genre saturation analysis."""
+    db = next(get_db())
+    from src.utils.market_insights import MarketInsightsAnalyzer
+    analyzer = MarketInsightsAnalyzer(db)
+    return analyzer.analyze_genre_saturation()
+
+
 def get_session():
     """Get database session."""
     return next(get_db())
@@ -20,10 +45,6 @@ def show_market_opportunities():
     """Show golden age opportunities and market gaps."""
     st.header("🌟 Market Opportunities")
     st.markdown("*Find emerging genres and underserved niches*")
-    
-    db = get_session()
-    from src.utils.market_insights import MarketInsightsAnalyzer
-    analyzer = MarketInsightsAnalyzer(db)
     
     tab1, tab2 = st.tabs(["🌟 Golden Age Genres", "📊 Genre Saturation"])
     
@@ -75,14 +96,15 @@ def show_market_opportunities():
                 )
         
         with st.spinner("Analyzing market opportunities..."):
-            opportunities = analyzer.analyze_golden_age_opportunities(
-                min_owners=min_owners,
-                max_total_games=max_competition,
-                min_recent_releases=min_recent,
-                lookback_days=lookback_days
+            opportunities = get_golden_age_data(
+                min_owners,
+                max_competition,
+                min_recent,
+                lookback_days
             )
             
             # Get diagnostic info
+            db = get_session()
             total_games = db.query(Game).count()
             games_with_owners = db.query(Game).join(PlayerStats).filter(
                 PlayerStats.estimated_owners > min_owners
@@ -96,6 +118,11 @@ def show_market_opportunities():
             df = pd.DataFrame(opportunities)
             
             st.dataframe(df, use_container_width=True, hide_index=True)
+            
+            # Export functionality
+            from src.utils.export_helpers import add_export_buttons
+            with st.expander("📥 Export Results"):
+                add_export_buttons(df, "market_opportunities")
             
             # Visualization
             fig = px.scatter(
@@ -173,7 +200,7 @@ def show_market_opportunities():
         )
         
         with st.spinner("Analyzing genre saturation..."):
-            results = analyzer.analyze_genre_saturation()
+            results = get_genre_saturation_data()
         
         if results:
             df = pd.DataFrame(results)
@@ -226,7 +253,7 @@ def show_revenue_projections():
         wishlists = st.number_input(
             "Expected wishlists at launch",
             min_value=100,
-            max_value=500000,
+            max_value=None,
             value=10000,
             step=1000
         )
@@ -359,6 +386,14 @@ def show_tag_strategy():
         "Find the balance!"
     )
     
+    # Pagination control
+    items_per_page = st.selectbox(
+        "Tags to display",
+        options=[20, 50, 100, 200],
+        index=1,
+        key="tag_page_size"
+    )
+    
     # Get tag usage statistics
     tag_stats = db.query(
         Tag.name,
@@ -370,7 +405,7 @@ def show_tag_strategy():
         Tag.name
     ).order_by(
         func.count(game_tags.c.game_id).desc()
-    ).limit(50).all()
+    ).limit(items_per_page).all()
     
     if tag_stats:
         df = pd.DataFrame([
@@ -379,6 +414,11 @@ def show_tag_strategy():
         ])
         
         st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        # Export functionality
+        from src.utils.export_helpers import add_export_buttons
+        with st.expander("📥 Export Tag Data"):
+            add_export_buttons(df, "popular_tags")
         
         # Visualization
         fig = px.bar(

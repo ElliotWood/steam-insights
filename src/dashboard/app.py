@@ -44,11 +44,15 @@ from src.dashboard.modules.analysis_pages import (
     show_genre_saturation, show_rising_trends,
     show_competition_calculator, show_market_positioning
 )
+from src.dashboard.modules.feedback import (
+    show_feedback_button, show_feedback_management, render_feedback_modal
+)
+from src.dashboard.modules.steam_page_builder import show_steam_page_builder
 
 # Page configuration
 st.set_page_config(
     page_title="Steam Insights Dashboard",
-    page_icon="🎮",
+    page_icon=".streamlit/static/logo_icon_small_54x54.png",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -64,12 +68,28 @@ def get_session():
 
 def main():
     """Main dashboard function."""
-    st.title("🎮 Steam Insights Dashboard")
-    st.markdown("*Data-driven game development & marketing intelligence*")
+    # Logo and title header
+    col1, col2, col3 = st.columns([1, 6, 1])
+    with col1:
+        st.image(".streamlit/static/logo_icon_large_103x103.png", width=80)
+    with col2:
+        st.title("Steam Insights Dashboard")
+        st.markdown("*Data-driven game development & marketing intelligence*")
+    with col3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        show_feedback_button()
+    
+    # Render feedback modal if active
+    render_feedback_modal()
+    
     st.markdown("---")
     
-    # Sidebar with development stage navigation
+    # Sidebar with logo and development stage navigation
     with st.sidebar:
+        # Sidebar logo
+        st.image(".streamlit/static/logo_name_330x100.png", use_container_width=True)
+        st.markdown("---")
+        
         st.header("🎯 Development Stage")
         st.markdown("*Navigate by your current phase*")
         
@@ -114,7 +134,8 @@ def main():
                     "💎 Revenue Projections",
                     "🎯 Competition Analysis",
                     "🏷️ Tag Strategy",
-                    "💰 Pricing Strategy"
+                    "💰 Pricing Strategy",
+                    "🎨 Steam Page Builder"
                 ],
                 label_visibility="collapsed",
                 key="preproduction_nav"
@@ -171,7 +192,8 @@ def main():
                     "⚙️ System Settings",
                     "📊 Top Charts",
                     "🔍 Market Analytics",
-                    "🤖 LLM Data Mining"
+                    "🤖 LLM Data Mining",
+                    "💬 Feedback Management"
                 ],
                 label_visibility="collapsed",
                 key="data_mgmt_nav"
@@ -262,6 +284,8 @@ def route_to_page(page: str, stage: str):
         show_tag_strategy()
     elif page == "💰 Pricing Strategy":
         show_pricing_strategy()
+    elif page == "🎨 Steam Page Builder":
+        show_steam_page_builder()
     
     # Production & Tracking Stage
     elif page == "👀 Competitor Tracking":
@@ -306,6 +330,8 @@ def route_to_page(page: str, stage: str):
         show_market_analytics()
     elif page == "🤖 LLM Data Mining":
         show_llm_mining()
+    elif page == "💬 Feedback Management":
+        show_feedback_management()
     
     else:
         # Default fallback
@@ -514,7 +540,7 @@ def show_revenue_projections():
         wishlists = st.number_input(
             "Estimated wishlists at launch",
             min_value=100,
-            max_value=500000,
+            max_value=None,
             value=10000,
             step=1000,
             help="Target wishlist count by launch day"
@@ -695,7 +721,7 @@ def show_tag_strategy():
     min_owners = st.slider(
         "Minimum owners to consider 'successful'",
         10000,
-        500000,
+        1000000,
         100000,
         10000
     )
@@ -950,7 +976,7 @@ def show_benchmark_game():
         total_wishlists = st.number_input(
             "Total wishlists",
             min_value=0,
-            max_value=500000,
+            max_value=None,
             value=5000,
             step=100
         )
@@ -1117,53 +1143,103 @@ def show_review_estimator():
     with tab1:
         st.markdown("#### Genre Distribution Analysis")
         
-        genre_counts = db.query(
-            Genre.name,
-            func.count(Game.id).label('count')
-        ).join(Genre.games).group_by(Genre.name).order_by(
-            func.count(Game.id).desc()
-        ).limit(10).all()
+        # Check data quality first
+        total_games = db.query(func.count(Game.steam_appid)).scalar() or 0
+        games_with_genres = db.query(
+            func.count(func.distinct(Game.steam_appid))
+        ).join(Genre.games).scalar() or 0
+        coverage_pct = (
+            games_with_genres / total_games * 100
+        ) if total_games > 0 else 0
         
-        if genre_counts:
-            col1, col2 = st.columns([2, 1])
+        # Show warning if coverage is poor
+        if coverage_pct < 50:
+            st.warning(
+                f"⚠️ **Data Quality Issue**: Only "
+                f"{games_with_genres:,} out of {total_games:,} games "
+                f"({coverage_pct:.1f}%) have genre data.\n\n"
+                f"**Why?** The current import uses SteamSpy API which "
+                f"doesn't provide genre information.\n\n"
+                f"**Solution:** Run the data enrichment script to "
+                f"fetch genres from Steam Store API. "
+                f"See `DATA_ENRICHMENT_STRATEGY.md` for details."
+            )
             
-            with col1:
-                # Bar chart
-                df_genres = pd.DataFrame(genre_counts, columns=['Genre', 'Game Count'])
-                fig = px.bar(
-                    df_genres, 
-                    x='Genre', 
-                    y='Game Count',
-                    color='Game Count',
-                    color_continuous_scale='Blues',
-                    title="Top 10 Genres by Game Count"
-                )
-                fig.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#ffffff',
-                    showlegend=False,
-                    height=400
-                )
-                st.plotly_chart(fig, use_container_width=True)
+            # Show minimal data anyway, but with clear labeling
+            genre_counts = db.query(
+                Genre.name,
+                func.count(Game.steam_appid).label('count')
+            ).join(Genre.games).group_by(Genre.name).order_by(
+                func.count(Game.steam_appid).desc()
+            ).all()
             
-            with col2:
-                # Pie chart
-                fig_pie = px.pie(
+            if genre_counts:
+                st.markdown(
+                    f"**Current Genre Data** (from "
+                    f"{games_with_genres:,} games only):"
+                )
+                df_genres = pd.DataFrame(
+                    genre_counts,
+                    columns=['Genre', 'Game Count']
+                )
+                st.dataframe(
                     df_genres,
-                    values='Game Count',
-                    names='Genre',
-                    title="Genre Distribution"
+                    use_container_width=True,
+                    hide_index=True
                 )
-                fig_pie.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#ffffff',
-                    height=400
-                )
-                st.plotly_chart(fig_pie, use_container_width=True)
         else:
-            st.info("📥 No genre data available yet. Import some games first!")
+            # Normal visualization when data quality is good
+            genre_counts = db.query(
+                Genre.name,
+                func.count(Game.steam_appid).label('count')
+            ).join(Genre.games).group_by(Genre.name).order_by(
+                func.count(Game.steam_appid).desc()
+            ).limit(10).all()
+            
+            if genre_counts:
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    df_genres = pd.DataFrame(
+                        genre_counts,
+                        columns=['Genre', 'Game Count']
+                    )
+                    fig = px.bar(
+                        df_genres,
+                        x='Genre',
+                        y='Game Count',
+                        color='Game Count',
+                        color_continuous_scale='Blues',
+                        title="Top 10 Genres by Game Count"
+                    )
+                    fig.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='#ffffff',
+                        showlegend=False,
+                        height=400
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    fig_pie = px.pie(
+                        df_genres,
+                        values='Game Count',
+                        names='Genre',
+                        title="Genre Distribution"
+                    )
+                    fig_pie.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font_color='#ffffff',
+                        height=400
+                    )
+                    st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info(
+                    "📥 No genre data available yet. "
+                    "Import some games first!"
+                )
     
     with tab2:
         st.markdown("#### Recently Added Games")
