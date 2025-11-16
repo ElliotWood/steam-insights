@@ -231,6 +231,6 @@ def show_feedback_management():
                     screenshot_path = feedback_dir / feedback_data['screenshot']
                     if screenshot_path.exists():
                         st.markdown("**Screenshot:**")
-                        st.image(str(screenshot_path), use_container_width=True)
+                        st.image(str(screenshot_path))
             
             st.markdown("---")

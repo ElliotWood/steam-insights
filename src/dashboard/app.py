@@ -87,7 +87,7 @@ def main():
     # Sidebar with logo and development stage navigation
     with st.sidebar:
         # Sidebar logo
-        st.image(".streamlit/static/logo_name_330x100.png", use_container_width=True)
+        st.image(".streamlit/static/logo_name_330x100.png")
         st.markdown("---")
         
         st.header("🎯 Development Stage")
