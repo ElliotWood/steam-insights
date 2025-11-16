@@ -37,514 +37,243 @@ def get_dashboard_kpis():
     }
 
 
-@st.cache_data(ttl=3600)
-def get_genre_distribution():
-    """Cached genre distribution data."""
-    db = next(get_db())
-    
-    results = db.query(
-        Genre.name,
-        func.count(Game.steam_appid).label('game_count')
-    ).join(
-        Game.genres
-    ).group_by(
-        Genre.name
-    ).order_by(
-        func.count(Game.steam_appid).desc()
-    ).limit(15).all()
-    
-    return [{
-        'genre': r.name,
-        'game_count': r.game_count
-    } for r in results]
-
-
 def get_session():
     """Get database session."""
     return next(get_db())
 
 
 def show_overview():
-    """Show enhanced home dashboard landing page."""
-    # Hero section with welcome message
-    st.markdown("""
-    <div style='text-align: center; padding: 2rem 0 1rem 0;'>
-        <h1 style='font-size: 2.5rem; margin-bottom: 0.5rem;'>🎮 Welcome to Steam Insights</h1>
-        <p style='font-size: 1.2rem; color: #888;'>Data-Driven Game Development & Marketing Intelligence Platform</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Quick stats banner
-    st.markdown("### 📊 Platform Overview")
-    col1, col2, col3, col4 = st.columns(4)
-    
+    """Show dashboard home page with dense information layout."""
+    db = get_session()
     kpis = get_dashboard_kpis()
     
+    # Top KPI row - compact metrics
+    st.markdown("### 📊 Platform Metrics")
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
     with col1:
-        st.metric("📚 Games Database", f"{kpis['total_games']:,}", help="Total games tracked in our database")
-    
+        st.metric("Games", f"{kpis['total_games']:,}")
     with col2:
-        st.metric("🎯 Genre Categories", f"{kpis['total_genres']:,}", help="Unique game genres analyzed")
-    
+        st.metric("Genres", f"{kpis['total_genres']:,}")
     with col3:
-        st.metric("⚡ Recent Updates", f"{kpis['recent_stats']:,}", help="Data updates in last 24 hours")
-    
+        st.metric("Updates (24h)", f"{kpis['recent_stats']:,}")
     with col4:
-        st.metric("👥 Active Players", f"{kpis['avg_players']:,}", help="Average current players tracked")
+        st.metric("Avg Players", f"{kpis['avg_players']:,}")
+    with col5:
+        # Additional metric - games added this week
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        new_games = db.query(func.count(Game.steam_appid)).filter(
+            Game.created_at >= week_ago
+        ).scalar() or 0
+        st.metric("New (7d)", f"{new_games:,}")
+    with col6:
+        # Games with player data
+        games_with_stats = db.query(func.count(func.distinct(PlayerStats.steam_appid))).scalar() or 0
+        st.metric("Tracked", f"{games_with_stats:,}")
     
     st.markdown("---")
     
-    # Feature showcase with pill navigation
-    st.markdown("### 🚀 What You Can Do with Steam Insights")
+    # Two column layout for dense information display
+    col_left, col_right = st.columns([1, 1])
     
-    # Pill-based navigation tabs
+    with col_left:
+        # Genre distribution chart
+        st.markdown("#### 📊 Top Genres")
+        genre_counts = db.query(
+            Genre.name,
+            func.count(Game.steam_appid).label('count')
+        ).join(Genre.games).group_by(Genre.name).order_by(
+            func.count(Game.steam_appid).desc()
+        ).limit(10).all()
+        
+        if genre_counts:
+            df_genres = pd.DataFrame(genre_counts, columns=['Genre', 'Count'])
+            fig = px.bar(
+                df_genres,
+                x='Count',
+                y='Genre',
+                orientation='h',
+                height=350
+            )
+            fig.update_layout(
+                margin=dict(l=0, r=0, t=0, b=0),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font_color='#ffffff',
+                showlegend=False,
+                yaxis={'categoryorder': 'total ascending'}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No genre data available")
+    
+    with col_right:
+        # Top games by players
+        st.markdown("#### 🔥 Top Games (7d)")
+        top_games = db.query(
+            Game.name,
+            func.max(PlayerStats.current_players).label('peak')
+        ).join(PlayerStats).filter(
+            PlayerStats.timestamp >= datetime.now(timezone.utc) - timedelta(days=7)
+        ).group_by(Game.name).order_by(
+            func.max(PlayerStats.current_players).desc()
+        ).limit(10).all()
+        
+        if top_games:
+            df_top = pd.DataFrame([
+                {'Game': g.name[:25] + '...' if len(g.name) > 25 else g.name, 
+                 'Peak': int(g.peak)}
+                for g in top_games
+            ])
+            fig = px.bar(
+                df_top,
+                x='Peak',
+                y='Game',
+                orientation='h',
+                height=350
+            )
+            fig.update_layout(
+                margin=dict(l=0, r=0, t=0, b=0),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font_color='#ffffff',
+                showlegend=False,
+                yaxis={'categoryorder': 'total ascending'}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No player data available")
+    
+    # Three column section - more dense widgets
+    st.markdown("---")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("#### 📈 Recent Activity")
+        # Games added over last 30 days
+        games_by_date = db.query(
+            func.date(Game.created_at).label('date'),
+            func.count(Game.steam_appid).label('count')
+        ).filter(
+            Game.created_at >= datetime.now(timezone.utc) - timedelta(days=30)
+        ).group_by(func.date(Game.created_at)).order_by(
+            func.date(Game.created_at)
+        ).all()
+        
+        if games_by_date and len(games_by_date) > 1:
+            df_growth = pd.DataFrame([
+                {'Date': str(item.date), 'Games': item.count}
+                for item in games_by_date
+            ])
+            fig = px.line(df_growth, x='Date', y='Games', height=200)
+            fig.update_layout(
+                margin=dict(l=0, r=0, t=0, b=0),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font_color='#ffffff',
+                showlegend=False
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No recent activity")
+    
+    with col2:
+        st.markdown("####  🎯 Coverage Stats")
+        total = db.query(func.count(Game.steam_appid)).scalar() or 0
+        with_genres = db.query(func.count(func.distinct(Game.steam_appid))).join(Genre.games).scalar() or 0
+        with_release = db.query(func.count(Game.steam_appid)).filter(Game.release_date.isnot(None)).scalar() or 0
+        
+        coverage_data = pd.DataFrame([
+            {'Category': 'Genres', 'Coverage': (with_genres/total*100 if total > 0 else 0)},
+            {'Category': 'Release Date', 'Coverage': (with_release/total*100 if total > 0 else 0)},
+            {'Category': 'Player Stats', 'Coverage': (games_with_stats/total*100 if total > 0 else 0)}
+        ])
+        
+        fig = px.bar(coverage_data, x='Category', y='Coverage', height=200)
+        fig.update_layout(
+            margin=dict(l=0, r=0, t=0, b=0),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font_color='#ffffff',
+            showlegend=False,
+            yaxis_title="Coverage %"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col3:
+        st.markdown("#### 🚀 Quick Actions")
+        st.markdown("""
+        **Get Started:**
+        - 📥 Import Games → Data Management
+        - 🔍 Market Research → Concept Stage
+        - 📊 View Analytics → Analytics Tools
+        - 🎨 Build Steam Page → Production
+        
+        **Pro Tips:**
+        - Stage-based navigation in sidebar
+        - Interactive charts (hover for details)
+        - Export data in multiple formats
+        """)
+    
+    # Feature pills at bottom - more compact
+    st.markdown("---")
+    st.markdown("### 🔧 Platform Tools")
     feature_tab = st.radio(
-        "Explore platform features:",
-        ["🔍 Overview", "💡 Research Tools", "📊 Analytics Tools", "🎨 Production Tools", "📈 Growth Tools"],
+        "Quick tool access:",
+        ["🔍 All", "💡 Research", "📊 Analytics", "🎨 Production", "📈 Growth"],
         horizontal=True,
         key="feature_navigation",
         label_visibility="collapsed"
     )
     
-    if feature_tab == "🔍 Overview":
-        # Platform capabilities overview
-        col1, col2, col3 = st.columns(3)
-        
+    # Compact feature showcase based on selected tab
+    if feature_tab == "🔍 All":
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.markdown("""
-            #### 💡 Concept & Research
-            - **Market Opportunities**: Find golden age genres
-            - **Genre Analysis**: Deep genre insights  
-            - **Google Trends**: Validate game ideas
-            - **Rising Trends**: Spot emerging niches
-            """)
-        
+            st.markdown("**💡 Research**\n- Market Opportunities\n- Genre Analysis\n- Trends")
         with col2:
-            st.markdown("""
-            #### 🎨 Pre-Production & Planning
-            - **Revenue Projections**: Estimate potential
-            - **Competition Analysis**: Understand rivals
-            - **Tag Strategy**: Optimize discoverability
-            - **Pricing Strategy**: Find optimal price
-            """)
-        
+            st.markdown("**📊 Analytics**\n- Competition Calculator\n- Market Position\n- Post-Mortem")
         with col3:
-            st.markdown("""
-            #### 🚀 Launch & Analytics
-            - **Demo Impact**: Calculate demo value
-            - **Wishlist Benchmarks**: Track momentum
-            - **Review Estimator**: Project reviews
-            - **Market Position**: Competitive standing
-            """)
-        
-        st.markdown("---")
-        st.markdown("### 🎯 Getting Started")
-        
+            st.markdown("**🎨 Production**\n- Steam Page Builder\n- Competitor Tracking\n- Similar Games")
+        with col4:
+            st.markdown("**📈 Growth**\n- Demo Impact\n- Benchmarks\n- Review Estimator")
+    
+    elif feature_tab == "💡 Research":
         col1, col2 = st.columns(2)
         with col1:
-            st.info("""
-            **New to Steam Insights?**
-            
-            1. 📥 Import games via *Data Management*
-            2. 🔍 Explore *Market Opportunities*
-            3. 📊 Analyze with stage-based tools
-            4. 💾 Export insights for your team
-            """)
-        
+            st.markdown("**🌟 Market Opportunities**\nFind golden age genres with high success rates")
+            st.markdown("**📊 Genre Saturation**\nAnalyze competition levels across genres")
         with col2:
-            st.success("""
-            **Quick Tips:**
-            
-            - Use the sidebar to navigate by development stage
-            - All charts are interactive - hover for details
-            - Export data in multiple formats (CSV, Excel, JSON)
-            - Track competitors in real-time
-            """)
+            st.markdown("**🔥 Rising Trends**\nSpot trending genres before oversaturation")
+            st.markdown("**🎮 Game Explorer**\nDeep dive into any Steam game")
     
-    elif feature_tab == "💡 Research Tools":
+    elif feature_tab == "📊 Analytics":
         col1, col2 = st.columns(2)
-        
         with col1:
-            st.markdown("#### 🌟 Market Opportunities")
-            st.write("Find emerging genres with high success rates and low competition. Identify golden age opportunities based on Chris Zukowski's methodology.")
-            
-            st.markdown("#### 📊 Genre Saturation")
-            st.write("Analyze competition levels across genres. Lower saturation = easier to stand out in the market.")
-        
+            st.markdown("**⚔️ Competition Calculator**\nCalculate competitive intensity")
+            st.markdown("**📈 Market Position**\nPlayer base overlap analysis")
         with col2:
-            st.markdown("#### 🔥 Rising Trends")
-            st.write("Spot trending genres and mechanics before they become oversaturated. Early mover advantage.")
-            
-            st.markdown("#### 🎮 Game Explorer")
-            st.write("Deep dive into any Steam game. View player stats, pricing history, reviews, and competitive positioning.")
+            st.markdown("**🔍 Post-Mortem Analysis**\nForecasting and correlation analysis")
+            st.markdown("**📊 Top Charts**\nTrack top performing games")
     
-    elif feature_tab == "📊 Analytics Tools":
+    elif feature_tab == "🎨 Production":
         col1, col2 = st.columns(2)
-        
         with col1:
-            st.markdown("#### ⚔️ Competition Calculator")
-            st.write("Calculate competitive intensity for genre/tag combinations. Understand market crowding.")
-            
-            st.markdown("#### 📈 Market Position")
-            st.write("Analyze player base overlap and addressable market calculations for your game.")
-        
+            st.markdown("**🎨 Steam Page Builder**\nDesign optimal store pages")
+            st.markdown("**👀 Competitor Tracking**\nMonitor competitor updates")
         with col2:
-            st.markdown("#### 🔍 Post-Mortem Analysis")
-            st.write("Advanced analytics with forecasting, correlation analysis, and trend detection.")
-            
-            st.markdown("#### 📊 Top Charts")
-            st.write("Track top performing games across multiple dimensions - players, revenue, reviews.")
+            st.markdown("**🔍 Similar Games**\nFind similar titles for analysis")
+            st.markdown("**📈 Genre Trends**\nTrack genre performance over time")
     
-    elif feature_tab == "🎨 Production Tools":
+    elif feature_tab == "📈 Growth":
         col1, col2 = st.columns(2)
-        
         with col1:
-            st.markdown("#### 🎨 Steam Page Builder")
-            st.write("Design and optimize your Steam store page with AI-powered suggestions and best practices.")
-            
-            st.markdown("#### 👀 Competitor Tracking")
-            st.write("Monitor competitor releases, updates, and performance metrics in real-time.")
-        
+            st.markdown("**🚀 Demo Impact**\nCalculate demo release impact")
+            st.markdown("**💎 Benchmark Your Game**\nCompare against similar titles")
         with col2:
-            st.markdown("#### 🔍 Similar Games")
-            st.write("Find games similar to yours for competitive analysis and positioning.")
-            
-            st.markdown("#### 📈 Genre Trends")
-            st.write("Track genre performance over time with detailed trend analysis.")
+            st.markdown("**📊 Review Estimator**\nProject expected review counts")
+            st.markdown("**💰 Revenue Projections**\nEstimate potential revenue")
     
-    elif feature_tab == "📈 Growth Tools":
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("#### 🚀 Demo Impact Calculator")
-            st.write("Calculate potential impact of releasing a demo based on historical data.")
-            
-            st.markdown("#### 💎 Benchmark Your Game")
-            st.write("Compare your game's wishlists and metrics against similar titles.")
-        
-        with col2:
-            st.markdown("#### 📊 Review Estimator")
-            st.write("Estimate expected review counts based on projected sales.")
-            
-            st.markdown("#### 💰 Revenue Projections")
-            st.write("Project potential revenue using multiple methodologies and historical data.")
-    
-    st.markdown("---")
-    
-    # Data insights section with tabs
-    st.markdown("### 📈 Current Market Insights")
-    tab1, tab2, tab3 = st.tabs(["📊 Genre Trends", "🎮 Recent Games", "🔥 Top Performers"])
-    
-    db = get_session()
-    
-    with tab1:
-        st.markdown("#### 📊 Genre Distribution & Market Overview")
-        
-        # Check data quality first
-        total_games = db.query(func.count(Game.steam_appid)).scalar() or 0
-        games_with_genres = db.query(
-            func.count(func.distinct(Game.steam_appid))
-        ).join(Genre.games).scalar() or 0
-        coverage_pct = (
-            games_with_genres / total_games * 100
-        ) if total_games > 0 else 0
-        
-        # Summary metrics for genres
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Coverage", f"{coverage_pct:.1f}%", help="Percentage of games with genre data")
-        with col2:
-            st.metric("Games Analyzed", f"{games_with_genres:,}", help="Games with genre information")
-        with col3:
-            unique_genres = db.query(func.count(Genre.id)).scalar() or 0
-            st.metric("Unique Genres", f"{unique_genres:,}", help="Total distinct genres tracked")
-        
-        # Show warning if coverage is poor
-        if coverage_pct < 50:
-            st.warning(
-                f"⚠️ **Data Quality Note**: {coverage_pct:.1f}% genre coverage. "
-                f"Import more games or run enrichment for complete data."
-            )
-            
-            # Show minimal data anyway, but with clear labeling
-            genre_counts = db.query(
-                Genre.name,
-                func.count(Game.steam_appid).label('count')
-            ).join(Genre.games).group_by(Genre.name).order_by(
-                func.count(Game.steam_appid).desc()
-            ).limit(15).all()
-            
-            if genre_counts:
-                df_genres = pd.DataFrame(
-                    genre_counts,
-                    columns=['Genre', 'Game Count']
-                )
-                
-                # Create a nice horizontal bar chart
-                fig = px.bar(
-                    df_genres,
-                    x='Game Count',
-                    y='Genre',
-                    orientation='h',
-                    color='Game Count',
-                    color_continuous_scale='Viridis',
-                    title="Top Genres by Game Count"
-                )
-                fig.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#ffffff',
-                    showlegend=False,
-                    height=500,
-                    yaxis={'categoryorder': 'total ascending'}
-                )
-                st.plotly_chart(fig, use_container_width=True)
-        else:
-            # Normal visualization when data quality is good
-            genre_counts = db.query(
-                Genre.name,
-                func.count(Game.steam_appid).label('count')
-            ).join(Genre.games).group_by(Genre.name).order_by(
-                func.count(Game.steam_appid).desc()
-            ).limit(15).all()
-            
-            if genre_counts:
-                col1, col2 = st.columns([3, 2])
-                
-                with col1:
-                    df_genres = pd.DataFrame(
-                        genre_counts,
-                        columns=['Genre', 'Game Count']
-                    )
-                    fig = px.bar(
-                        df_genres,
-                        x='Game Count',
-                        y='Genre',
-                        orientation='h',
-                        color='Game Count',
-                        color_continuous_scale='Viridis',
-                        title="Top 15 Genres by Game Count"
-                    )
-                    fig.update_layout(
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#ffffff',
-                        showlegend=False,
-                        height=500,
-                        yaxis={'categoryorder': 'total ascending'}
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                with col2:
-                    # Show top 10 for pie chart to avoid clutter
-                    df_top_genres = df_genres.head(10)
-                    fig_pie = px.pie(
-                        df_top_genres,
-                        values='Game Count',
-                        names='Genre',
-                        title="Top 10 Genre Share",
-                        hole=0.3
-                    )
-                    fig_pie.update_layout(
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font_color='#ffffff',
-                        height=500
-                    )
-                    st.plotly_chart(fig_pie, use_container_width=True)
-            else:
-                st.info(
-                    "📥 No genre data available yet. "
-                    "Import some games first!"
-                )
-    
-    with tab2:
-        st.markdown("#### 🎮 Recently Added to Database")
-        
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            st.caption("Latest games imported into the platform")
-        with col2:
-            limit = st.selectbox(
-                "Show:",
-                options=[10, 25, 50],
-                index=1,
-                key="recent_games_limit",
-                label_visibility="collapsed"
-            )
-        
-        recent_games = db.query(Game).order_by(
-            Game.created_at.desc()
-        ).limit(limit).all()
-        
-        if recent_games:
-            games_data = []
-            for game in recent_games:
-                games_data.append({
-                    'Game': game.name,
-                    'Developer': game.developer or 'Unknown',
-                    'Genres': ', '.join([g.name for g in game.genres[:2]]) if game.genres else 'N/A',
-                    'Release Date': game.release_date.strftime('%Y-%m-%d') if game.release_date else 'TBA',
-                    'Added to DB': game.created_at.strftime('%Y-%m-%d')
-                })
-            
-            df_recent = pd.DataFrame(games_data)
-            st.dataframe(
-                df_recent,
-                use_container_width=True,
-                height=450,
-                hide_index=True
-            )
-            
-            # Growth over time chart
-            games_by_date = db.query(
-                func.date(Game.created_at).label('date'),
-                func.count(Game.steam_appid).label('count')
-            ).filter(
-                Game.created_at >= datetime.now(timezone.utc) - timedelta(days=30)
-            ).group_by(
-                func.date(Game.created_at)
-            ).order_by(
-                func.date(Game.created_at)
-            ).all()
-            
-            if games_by_date and len(games_by_date) > 1:
-                df_growth = pd.DataFrame([
-                    {'Date': str(item.date), 'Games Added': item.count}
-                    for item in games_by_date
-                ])
-                
-                fig_growth = px.line(
-                    df_growth,
-                    x='Date',
-                    y='Games Added',
-                    title="Games Added (Last 30 Days)",
-                    markers=True
-                )
-                fig_growth.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#ffffff',
-                    height=300
-                )
-                st.plotly_chart(fig_growth, use_container_width=True)
-        else:
-            st.info("📥 No games in database yet. Head to Data Management to import games!")
-    
-    with tab3:
-        st.markdown("#### 🔥 Top Performing Games")
-        st.caption("Based on player activity in the last 7 days")
-        
-        # Get games with recent player stats
-        top_games = db.query(
-            Game.name,
-            Game.developer,
-            func.max(PlayerStats.current_players).label('peak_players'),
-            func.avg(PlayerStats.current_players).label('avg_players')
-        ).join(PlayerStats).filter(
-            PlayerStats.timestamp >= datetime.now(timezone.utc) - timedelta(days=7)
-        ).group_by(Game.name, Game.developer).order_by(
-            func.max(PlayerStats.current_players).desc()
-        ).limit(20).all()
-        
-        if top_games:
-            # Create visualization
-            df_top_viz = pd.DataFrame([
-                {
-                    'Game': game.name[:30] + '...' if len(game.name) > 30 else game.name,
-                    'Peak Players': int(game.peak_players),
-                    'Avg Players': int(game.avg_players)
-                }
-                for game in top_games[:15]  # Top 15 for chart
-            ])
-            
-            fig_top = px.bar(
-                df_top_viz,
-                x='Peak Players',
-                y='Game',
-                orientation='h',
-                color='Peak Players',
-                color_continuous_scale='Plasma',
-                title="Top 15 Games by Peak Players (Last 7 Days)"
-            )
-            fig_top.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font_color='#ffffff',
-                showlegend=False,
-                height=500,
-                yaxis={'categoryorder': 'total ascending'}
-            )
-            st.plotly_chart(fig_top, use_container_width=True)
-            
-            # Table with all data
-            df_top = pd.DataFrame([
-                {
-                    'Rank': idx + 1,
-                    'Game': game.name,
-                    'Developer': game.developer or 'Unknown',
-                    'Peak Players': f"{int(game.peak_players):,}",
-                    'Avg Players': f"{int(game.avg_players):,}"
-                }
-                for idx, game in enumerate(top_games)
-            ])
-            
-            st.dataframe(
-                df_top,
-                use_container_width=True,
-                height=300,
-                hide_index=True
-            )
-        else:
-            st.info("📊 No player statistics available yet. Import games and update player stats!")
-    
-    # Close the database session
-    db.close()
-    
-    # Call to action section
-    st.markdown("---")
-    st.markdown("### 🚀 Ready to Get Started?")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""
-        #### 📥 Import Data
-        Head to **Data Management** to:
-        - Import individual games
-        - Bulk import from databases
-        - Update player statistics
-        - Export your analytics
-        """)
-    
-    with col2:
-        st.markdown("""
-        #### 🔍 Explore Tools
-        Choose your development stage:
-        - **Concept**: Research opportunities
-        - **Pre-Production**: Plan strategy
-        - **Production**: Track competitors
-        - **Launch**: Monitor performance
-        """)
-    
-    with col3:
-        st.markdown("""
-        #### 💡 Get Insights
-        Use our analytics to:
-        - Find market gaps
-        - Optimize pricing
-        - Track player trends
-        - Benchmark performance
-        """)
-    
-    # Footer
-    st.markdown("---")
-    st.markdown(
-        "<div style='text-align: center; color: #666; padding: 1rem 0;'>"
-        "Steam Insights Dashboard | Data-Driven Game Development"
-        "</div>",
-        unsafe_allow_html=True
-    )
     db.close()
 
 
