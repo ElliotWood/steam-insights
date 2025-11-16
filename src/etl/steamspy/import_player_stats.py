@@ -1,10 +1,10 @@
 """
-SteamSpy API - Player Stats Enrichment
-Imports player statistics from SteamSpy to enrich database.
+SteamSpy API - Player Stats Enrichment (BULK MODE)
+Imports player statistics from SteamSpy using bulk API.
 
-Target: 80,000+ games with player stats
-Rate Limit: 4 requests/second
-Execution Time: ~6 hours
+NEW BULK API: Returns 1,000 games per request!
+Rate Limit: 1 request per 60 seconds for 'all' endpoint
+Execution Time: ~4 hours for 200K games (vs 14 hours one-by-one)
 """
 import time
 import requests
@@ -14,47 +14,61 @@ from src.database.connection import SessionLocal
 
 
 class SteamSpyImporter:
-    """Import player stats from SteamSpy API."""
+    """Import player stats from SteamSpy API using BULK mode."""
     
     def __init__(self):
         self.base_url = "https://steamspy.com/api.php"
-        self.rate_limit = 0.25  # 4 req/sec = 0.25 seconds between
-        self.batch_size = 1000
+        self.bulk_rate_limit = 60  # 1 req per 60 sec for 'all' endpoint
         self.session = SessionLocal()
         
-    def get_game_stats(self, appid):
-        """Fetch stats for a single game from SteamSpy."""
+    def get_bulk_games(self, page):
+        """
+        Fetch 1,000 games at once from SteamSpy bulk API.
+        
+        Returns dict of {appid: game_data}
+        """
         try:
+            print(f"  Fetching page {page} (games {page*1000}-{(page+1)*1000})...")
             response = requests.get(
                 self.base_url,
-                params={'request': 'appdetails', 'appid': appid},
-                timeout=10
+                params={'request': 'all', 'page': page},
+                timeout=30
             )
             
             if response.status_code == 200:
                 data = response.json()
                 
-                # Check if we got valid data
-                if 'appid' in data and data.get('appid') != 0:
-                    return {
-                        'steam_appid': int(data['appid']),
-                        'estimated_owners': self._parse_owners(
-                            data.get('owners', '0')
-                        ),
-                        'peak_players_24h': data.get('ccu', 0),
-                        'current_players': data.get('players_forever', 0),
-                        'average_playtime': data.get('average_forever', 0),
-                        'median_playtime': data.get('median_forever', 0),
-                        'positive_reviews': data.get('positive', 0),
-                        'negative_reviews': data.get('negative', 0),
-                        'timestamp': datetime.now()
-                    }
-                    
-            return None
+                # Response is dict with appids as keys
+                games = {}
+                for appid_str, game_data in data.items():
+                    try:
+                        appid = int(appid_str)
+                        if appid > 0 and game_data.get('appid', 0) > 0:
+                            games[appid] = {
+                                'steam_appid': appid,
+                                'estimated_owners': self._parse_owners(
+                                    game_data.get('owners', '0')
+                                ),
+                                'peak_players_24h': game_data.get('ccu', 0),
+                                'current_players': game_data.get('players_forever', 0),
+                                'average_playtime': game_data.get('average_forever', 0),
+                                'median_playtime': game_data.get('median_forever', 0),
+                                'positive_reviews': game_data.get('positive', 0),
+                                'negative_reviews': game_data.get('negative', 0),
+                                'timestamp': datetime.now()
+                            }
+                    except (ValueError, KeyError, TypeError):
+                        continue
+                
+                print(f"  Retrieved {len(games)} valid games")
+                return games
+            else:
+                print(f"  HTTP {response.status_code}")
+                return {}
             
         except Exception as e:
-            print(f"    Error fetching {appid}: {e}")
-            return None
+            print(f"  Error fetching page {page}: {e}")
+            return {}
     
     def _parse_owners(self, owners_str):
         """
@@ -71,38 +85,40 @@ class SteamSpyImporter:
         except:
             return 0
     
-    def get_games_needing_stats(self, limit=None):
-        """Get games that don't have recent player stats."""
+    def get_games_needing_stats(self):
+        """Get set of AppIDs that need player stats."""
         query = text("""
-            SELECT g.steam_appid, g.name
+            SELECT g.steam_appid
             FROM games g
             LEFT JOIN player_stats ps ON g.steam_appid = ps.steam_appid
             WHERE ps.steam_appid IS NULL
             ORDER BY g.steam_appid
         """)
         
-        if limit:
-            query = text(f"""
-                SELECT g.steam_appid, g.name
-                FROM games g
-                LEFT JOIN player_stats ps ON g.steam_appid = ps.steam_appid
-                WHERE ps.steam_appid IS NULL
-                ORDER BY g.steam_appid
-                LIMIT {limit}
-            """)
-        
         result = self.session.execute(query).fetchall()
-        return [(row[0], row[1]) for row in result]
+        return set(row[0] for row in result)
     
-    def insert_player_stats(self, stats_list):
-        """Insert player stats ONE AT A TIME for fault tolerance."""
-        if not stats_list:
+    def insert_bulk_stats(self, stats_dict, needed_appids):
+        """
+        Insert stats from bulk fetch, filtering to only needed games.
+        
+        Args:
+            stats_dict: Dict of {appid: stats} from bulk API
+            needed_appids: Set of AppIDs that need stats
+            
+        Returns:
+            Number of records inserted
+        """
+        if not stats_dict:
             return 0
         
         inserted = 0
-        for stats in stats_list:
+        for appid, stats in stats_dict.items():
+            # Only insert if this game needs stats
+            if appid not in needed_appids:
+                continue
+                
             try:
-                # Simple insert - no conflict handling
                 insert_sql = text("""
                     INSERT INTO player_stats (
                         steam_appid, timestamp, current_players,
@@ -137,103 +153,119 @@ class SteamSpyImporter:
         
         return inserted
     
-    def run_import(self, max_games=None, resume_from=None):
+    def run_bulk_import(self, start_page=0, max_pages=None):
         """
-        Run the import process with fault tolerance.
+        Run BULK import using 'all' endpoint (1,000 games per request).
         
         Args:
-            max_games: Maximum number of games to process (for testing)
-            resume_from: Steam AppID to resume from
+            start_page: Page number to start from (for resume)
+            max_pages: Maximum pages to process (None = all)
         """
-        print("=== SteamSpy Player Stats Import ===\n")
+        print("=" * 70)
+        print("SteamSpy BULK Import (1,000 games per request)")
+        print("=" * 70)
+        print()
         
         # Get games needing stats
-        print("Loading games...")
-        games = self.get_games_needing_stats(limit=max_games)
+        print("Loading games that need stats...")
+        needed_appids = self.get_games_needing_stats()
+        print(f"Games needing stats: {len(needed_appids):,}\n")
         
-        if resume_from:
-            games = [(aid, name) for aid, name in games if aid >= resume_from]
-        
-        total_games = len(games)
-        print(f"Games to process: {total_games:,}\n")
-        
-        if total_games == 0:
+        if len(needed_appids) == 0:
             print("No games need stats!")
             return
         
-        # Calculate time estimate
-        est_time = (total_games * self.rate_limit) / 3600
+        # Estimate pages needed (SteamSpy has ~200 pages of 1000 games each)
+        estimated_pages = 220  # ~220K games total on SteamSpy
+        if max_pages:
+            estimated_pages = min(estimated_pages, max_pages)
+        
+        print(f"Starting from page: {start_page}")
+        print(f"Estimated pages: {estimated_pages}")
+        print(f"Rate limit: 1 request per 60 seconds")
+        est_time = (estimated_pages * 60) / 3600
         print(f"Estimated time: {est_time:.1f} hours")
-        print(f"Rate: {1/self.rate_limit:.1f} requests/second\n")
+        print(f"(Much faster than 14 hours one-by-one!)\n")
         
-        # Auto-start for automation
-        print("Starting import automatically...\n")
+        # Auto-start
+        print("Starting bulk import...\n")
         
-        # Process with small batches and commit each one
-        processed = 0
-        inserted = 0
-        batch_stats = []
-        batch_size = 50  # Smaller batches for fault tolerance
         start_time = time.time()
+        total_inserted = 0
+        pages_processed = 0
         
-        for i, (appid, name) in enumerate(games, 1):
-            try:
-                # Fetch stats
-                stats = self.get_game_stats(appid)
+        try:
+            for page in range(start_page, start_page + estimated_pages):
+                # Fetch bulk page (1,000 games)
+                games_dict = self.get_bulk_games(page)
                 
-                if stats:
-                    batch_stats.append(stats)
+                if not games_dict:
+                    print(f"  Page {page} returned no data (end of list?)")
+                    break
                 
-                # Rate limiting
-                time.sleep(self.rate_limit)
+                # Insert games that need stats
+                inserted = self.insert_bulk_stats(games_dict, needed_appids)
+                total_inserted += inserted
+                pages_processed += 1
                 
-                # Insert small batch frequently for fault tolerance
-                if len(batch_stats) >= batch_size or i == total_games:
-                    inserted += self.insert_player_stats(batch_stats)
-                    batch_stats = []
+                # Remove inserted AppIDs from needed set
+                for appid in games_dict.keys():
+                    needed_appids.discard(appid)
                 
-                processed += 1
+                # Progress
+                elapsed = time.time() - start_time
+                rate = pages_processed / (elapsed / 60) if elapsed > 0 else 0
+                remaining_pages = estimated_pages - pages_processed
+                remaining_time = (remaining_pages / rate / 60) if rate > 0 else 0
                 
-                # Progress update every 100 games
-                if processed % 100 == 0 or processed == total_games:
-                    elapsed = time.time() - start_time
-                    rate = processed / elapsed if elapsed > 0 else 0
-                    remaining = ((total_games - processed) / rate / 3600) if rate > 0 else 0
-                    
-                    print(
-                        f"Processed {processed:,}/{total_games:,} "
-                        f"({processed/total_games*100:.1f}%) | "
-                        f"Inserted: {inserted:,} | "
-                        f"Last: {appid} | "
-                        f"ETA: {remaining:.1f}h"
-                    )
-                    
-            except KeyboardInterrupt:
-                print(f"\n\nInterrupted at AppID {appid}")
-                print(f"Resume with: resume_from={appid}")
-                break
-            except Exception as e:
-                print(f"Error processing {appid}: {e}")
-                continue
+                print(
+                    f"  Inserted: {inserted} | "
+                    f"Total: {total_inserted:,} | "
+                    f"Page {page} | "
+                    f"Still need: {len(needed_appids):,} | "
+                    f"ETA: {remaining_time:.1f}h"
+                )
+                
+                # Rate limiting - 60 seconds between requests
+                if page < start_page + estimated_pages - 1:
+                    print(f"  Waiting 60 seconds...")
+                    time.sleep(self.bulk_rate_limit)
+                
+        except KeyboardInterrupt:
+            print(f"\n\nInterrupted at page {page}")
+            print(f"Resume with: start_page={page + 1}")
         
         # Final summary
         elapsed = time.time() - start_time
-        print(f"\n=== Import Complete ===")
-        print(f"Processed: {processed:,} games")
-        print(f"Inserted: {inserted:,} stats")
-        print(f"Time: {elapsed/3600:.1f} hours")
-        if processed > 0:
-            print(f"Success rate: {inserted/processed*100:.1f}%")
+        print(f"\n" + "=" * 70)
+        print("BULK IMPORT COMPLETE")
+        print("=" * 70)
+        print(f"Pages processed: {pages_processed}")
+        print(f"Stats inserted: {total_inserted:,}")
+        print(f"Games still needing stats: {len(needed_appids):,}")
+        print(f"Time: {elapsed/3600:.2f} hours")
         
         self.session.close()
 
 
 def main():
-    """Run SteamSpy import."""
+    """Run SteamSpy BULK import."""
+    import sys
+    
     importer = SteamSpyImporter()
     
-    # Run import for all games without stats
-    importer.run_import()
+    # Support resume from command line
+    start_page = 0
+    if len(sys.argv) > 1:
+        try:
+            start_page = int(sys.argv[1])
+            print(f"Resuming from page: {start_page}\n")
+        except ValueError:
+            print("Usage: python import_player_stats.py [start_page]")
+            sys.exit(1)
+    
+    # Run BULK import (1,000 games per request!)
+    importer.run_bulk_import(start_page=start_page)
 
 
 if __name__ == '__main__':

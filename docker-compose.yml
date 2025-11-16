@@ -30,6 +30,43 @@ services:
       - "max_connections=100"
       - "-c"
       - "work_mem=16MB"
+    networks:
+      - steam-insights-network
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: steam-insights-dashboard
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://steam_user:${DB_PASSWORD:-steaminsights2025}@postgres:5432/steam_insights
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: steam_insights
+      DB_USER: steam_user
+      DB_PASSWORD: ${DB_PASSWORD:-steaminsights2025}
+      DASHBOARD_PORT: 8502
+      STEAM_API_KEY: ${STEAM_API_KEY:-}
+    ports:
+      - "8502:8502"
+    volumes:
+      # Mount data directories for persistence
+      - ./data:/app/data
+      # Mount source code for development (optional - remove in production)
+      - ./src:/app/src
+      - ./config:/app/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - steam-insights-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8502/_stcore/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
   # Named volume for data persistence
@@ -37,5 +74,5 @@ volumes:
     driver: local
 
 networks:
-  default:
-    name: steam-insights-network
+  steam-insights-network:
+    driver: bridge

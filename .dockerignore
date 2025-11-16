@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Documentation
+docs/
+*.md
+LICENSE
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data (will be mounted as volumes)
+data/processed/
+data/zenodo_analysis/
+
+# Logs
+*.log
+enrichment_log.txt
+
+# Environment variables (will be set in docker-compose)
+.env
+.env.local
