@@ -15,7 +15,7 @@ numpy==1.26.2
 
 # Web Scraping
 beautifulsoup4==4.12.2
-requests==2.31.0
+requests==2.32.4
 lxml==4.9.3
 pytrends==4.9.2
 
